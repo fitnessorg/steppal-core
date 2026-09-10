@@ -42,3 +42,11 @@ Then check:
 curl http://localhost:3000/health
 # {"ok":true,"version":"0.1.0"}
 ```
+
+## Tests
+
+```bash
+pnpm test        # all packages
+pnpm lint
+pnpm typecheck
+```
