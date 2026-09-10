@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.env
+*.log
+.DS_Store
+coverage/
+pnpm-lock.yaml.bak
+target/
+.vscode/*
+!.vscode/extensions.json
