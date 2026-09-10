@@ -47,3 +47,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Run migrations
+        run: pnpm db:migrate
+
+      - name: Test
+        run: pnpm test
