@@ -21,3 +21,24 @@ steppal-core/
 ├── docker-compose.yml
 └── .env.example
 ```
+
+## Run it locally
+
+Requirements: Node 20+, pnpm, Docker.
+
+```bash
+git clone <this-repo>
+cd steppal-core
+cp .env.example .env
+pnpm install
+docker compose up -d
+pnpm db:migrate
+pnpm dev
+```
+
+Then check:
+
+```bash
+curl http://localhost:3000/health
+# {"ok":true,"version":"0.1.0"}
+```
