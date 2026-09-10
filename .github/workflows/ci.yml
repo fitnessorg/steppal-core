@@ -9,6 +9,26 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: steppal
+          POSTGRES_PASSWORD: steppal
+          POSTGRES_DB: steppal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U steppal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://steppal:steppal@localhost:5432/steppal
+      JWT_SECRET: ci-test-secret
+
     steps:
       - uses: actions/checkout@v4
 
