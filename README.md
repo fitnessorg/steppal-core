@@ -50,3 +50,7 @@ pnpm test        # all packages
 pnpm lint
 pnpm typecheck
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
