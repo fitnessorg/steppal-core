@@ -8,3 +8,16 @@ web clients consume.
 This project is being built deliberately to about 65% completion. The rest is
 left open for contributors — see [CONTRIBUTING-TASKS.md](./CONTRIBUTING-TASKS.md)
 once it exists, and look for `TODO(contributor)` comments in the code.
+
+## Repo layout
+
+```
+steppal-core/
+├── packages/
+│   ├── api/        # Fastify server, Postgres/Drizzle, business logic
+│   └── sdk/         # @steppal/sdk — typed client for mobile/web
+├── contracts/
+│   └── pot-escrow/  # Rust / Soroban escrow contract
+├── docker-compose.yml
+└── .env.example
+```
