@@ -2,7 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // DOM is here for fetch, Response and URLSearchParams only. The SDK runs in
+    // React Native and in Node 20+, both of which provide them; it never touches
+    // document or window.
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src"]
 }

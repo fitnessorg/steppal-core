@@ -8,6 +8,20 @@
       "when": 1789030390290,
       "tag": "0000_first_captain_america",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790027034436,
+      "tag": "0001_auth_and_pots",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791556012144,
+      "tag": "0002_pot_results",
+      "breakpoints": true
     }
   ]
 }
