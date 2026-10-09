@@ -61,4 +61,4 @@ stellar contract build        # wasm
   soroban-sdk 23. Migrating to the `#[contractevent]` macro is a good first
   contribution.
 
-Apache-2.0.
+MIT, same as the rest of StepPal. See the [LICENSE](../LICENSE) at the repo root.
