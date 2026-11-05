@@ -37,6 +37,18 @@ export type PotSummary = {
   endsOn: string;
   status: PotStatus;
   memberCount: number;
+  createdAt?: string;
+};
+
+export type ListPotsQuery = {
+  limit?: number;
+  cursor?: string;
+};
+
+export type StepSubmissionItem = {
+  day: string;
+  steps: number;
+  source?: StepSource;
 };
 
 export type MemberProgress = {

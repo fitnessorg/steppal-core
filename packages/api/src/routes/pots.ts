@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { potMembers, potResults, pots } from "../db/schema.js";
 import { inviteCodeCandidate, normaliseInviteCode } from "../lib/invite.js";
@@ -20,6 +20,7 @@ const potSummary = z.object({
   endsOn: z.string(),
   status: z.enum(["open", "running", "settled"]),
   memberCount: z.number(),
+  createdAt: z.string().optional(),
 });
 
 const memberProgress = z.object({
@@ -117,20 +118,41 @@ export function registerPotRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Pots this user is in, newest first. */
+  /** Pots this user is in, newest first, cursor-paginated on created_at. */
   api.get(
     "/v1/pots",
     {
       onRequest: [app.authenticate],
-      schema: { response: { 200: z.array(potSummary) } },
+      schema: {
+        querystring: z
+          .object({
+            limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+            cursor: z.string().optional(),
+          })
+          .optional(),
+        response: { 200: z.array(potSummary) },
+      },
     },
     async (request) => {
+      const limit = request.query?.limit ?? 50;
+      const cursor = request.query?.cursor;
+
+      const conditions = [eq(potMembers.userId, request.userId!), isNull(potMembers.leftAt)];
+
+      if (cursor) {
+        const cursorDate = new Date(cursor);
+        if (!isNaN(cursorDate.getTime())) {
+          conditions.push(lt(pots.createdAt, cursorDate));
+        }
+      }
+
       const mine = await db
         .select({ pot: pots })
         .from(potMembers)
         .innerJoin(pots, eq(pots.id, potMembers.potId))
-        .where(and(eq(potMembers.userId, request.userId!), isNull(potMembers.leftAt)))
-        .orderBy(desc(pots.createdAt));
+        .where(and(...conditions))
+        .orderBy(desc(pots.createdAt))
+        .limit(limit);
 
       if (mine.length === 0) return [];
 
@@ -160,6 +182,7 @@ export function registerPotRoutes(app: FastifyInstance) {
         endsOn: pot.endsOn,
         status: liveStatus(pot),
         memberCount: countFor.get(pot.id) ?? 0,
+        createdAt: pot.createdAt ? pot.createdAt.toISOString() : undefined,
       }));
     },
   );
