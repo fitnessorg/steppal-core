@@ -1,10 +1,11 @@
 import {
   StepPalError,
+  type ListPotsQuery,
   type PotDetail,
   type PotSummary,
   type Session,
   type StepDay,
-  type StepSource,
+  type StepSubmissionItem,
   type StepSubmissionResult,
   type User,
 } from "./types.js";
@@ -20,6 +21,10 @@ export type ClientOptions = {
   /** Called whenever the tokens change, including when they are cleared. */
   onTokens?: (tokens: TokenPair | null) => void | Promise<void>;
   fetch?: typeof globalThis.fetch;
+  /** Initial queued steps, e.g. restored from persistent local storage. */
+  initialStepQueue?: StepSubmissionItem[];
+  /** Called whenever the offline step queue changes. */
+  onStepQueueChange?: (queue: StepSubmissionItem[]) => void | Promise<void>;
 };
 
 /**
@@ -40,15 +45,19 @@ export class StepPalClient {
   private readonly doFetch: typeof globalThis.fetch;
   private readonly getTokens: () => TokenPair | null | Promise<TokenPair | null>;
   private readonly onTokens: (t: TokenPair | null) => void | Promise<void>;
+  private readonly onStepQueueChange?: (queue: StepSubmissionItem[]) => void | Promise<void>;
 
   private tokens: TokenPair | null = null;
   private refreshing: Promise<TokenPair | null> | null = null;
+  private stepQueue: StepSubmissionItem[] = [];
 
   constructor(options: ClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.doFetch = options.fetch ?? globalThis.fetch;
     this.getTokens = options.getTokens ?? (() => this.tokens);
     this.onTokens = options.onTokens ?? (() => {});
+    this.onStepQueueChange = options.onStepQueueChange;
+    this.stepQueue = options.initialStepQueue ? [...options.initialStepQueue] : [];
   }
 
   // ---- auth ----
@@ -95,8 +104,12 @@ export class StepPalClient {
 
   // ---- pots ----
 
-  listPots(): Promise<PotSummary[]> {
-    return this.call("GET", "/v1/pots");
+  listPots(params?: ListPotsQuery): Promise<PotSummary[]> {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set("limit", String(params.limit));
+    if (params?.cursor !== undefined) query.set("cursor", params.cursor);
+    const suffix = query.toString() ? `?${query}` : "";
+    return this.call("GET", `/v1/pots${suffix}`);
   }
 
   createPot(input: {
@@ -127,10 +140,72 @@ export class StepPalClient {
 
   // ---- steps ----
 
-  submitSteps(
-    days: { day: string; steps: number; source?: StepSource }[],
-  ): Promise<StepSubmissionResult> {
-    return this.call("POST", "/v1/steps", { body: { days } });
+  /** Returns a copy of the current offline step submission queue. */
+  getStepQueue(): StepSubmissionItem[] {
+    return [...this.stepQueue];
+  }
+
+  /** Alias for getStepQueue. */
+  getQueuedSteps(): StepSubmissionItem[] {
+    return this.getStepQueue();
+  }
+
+  /**
+   * Manually adds entries to the offline step queue, deduplicating by day
+   * so the most recently reported steps for a day overwrite previous entries.
+   */
+  async queueSteps(days: StepSubmissionItem[]): Promise<void> {
+    const map = new Map<string, StepSubmissionItem>();
+    for (const item of this.stepQueue) map.set(item.day, item);
+    for (const item of days) map.set(item.day, item);
+    this.stepQueue = Array.from(map.values());
+    await this.onStepQueueChange?.(this.getStepQueue());
+  }
+
+  /** Clears the offline step queue. */
+  async clearStepQueue(): Promise<void> {
+    this.stepQueue = [];
+    await this.onStepQueueChange?.([]);
+  }
+
+  /**
+   * Submits steps to the API. If the call fails due to a network or connectivity error,
+   * the entries are automatically added to the offline queue before re-throwing.
+   */
+  async submitSteps(days: StepSubmissionItem[]): Promise<StepSubmissionResult> {
+    try {
+      return await this.call("POST", "/v1/steps", { body: { days } });
+    } catch (err) {
+      if (this.isNetworkError(err)) {
+        await this.queueSteps(days);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Flushes all queued offline step submissions.
+   * If the queue is empty, returns null immediately without performing network calls.
+   * On success, removes flushed items from the queue and updates listeners.
+   */
+  async flushStepQueue(): Promise<StepSubmissionResult | null> {
+    if (this.stepQueue.length === 0) return null;
+
+    const toFlush = [...this.stepQueue];
+    const res = await this.call<StepSubmissionResult>("POST", "/v1/steps", {
+      body: { days: toFlush },
+    });
+
+    const flushedDays = new Set(toFlush.map((d) => d.day));
+    this.stepQueue = this.stepQueue.filter((item) => !flushedDays.has(item.day));
+    await this.onStepQueueChange?.(this.getStepQueue());
+
+    return res;
+  }
+
+  /** Alias for flushStepQueue. */
+  flushSteps(): Promise<StepSubmissionResult | null> {
+    return this.flushStepQueue();
   }
 
   async getSteps(range?: { from?: string; to?: string }): Promise<StepDay[]> {
@@ -213,6 +288,13 @@ export class StepPalClient {
     const next = (await res.json()) as TokenPair;
     await this.setTokens(next);
     return next;
+  }
+
+  private isNetworkError(err: unknown): boolean {
+    if (err instanceof StepPalError) {
+      return err.status >= 502 && err.status <= 504;
+    }
+    return true;
   }
 
   private async unwrap<T>(res: Response): Promise<T> {
