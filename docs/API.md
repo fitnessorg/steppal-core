@@ -65,6 +65,13 @@ Birds" becomes `IKEJ-2290` — so it is recognisable in a group chat with three
 pots in it. Collisions retry against a unique index rather than being assumed
 away.
 
+**`GET /v1/pots`** — `?limit=50&cursor=2026-11-05T...` → `200 PotSummary[]`
+
+Pots you are in, ordered newest first by `createdAt`. Supports cursor-based
+pagination via `limit` (integer 1..100, default 50) and `cursor` (ISO timestamp
+of the last seen pot's `createdAt`). When `cursor` is provided, returns pots
+created strictly before that timestamp. Omitting parameters returns the first page.
+
 **`GET /v1/pots/by-code/:code`** — accepts what a human types: lowercase, no
 dash, stray spaces. Lets the app show "Ikeja Early Birds, 4 people" before
 asking anyone to commit.
