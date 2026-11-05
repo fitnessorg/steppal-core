@@ -23,8 +23,10 @@
 //!   rounding dust and no way for the last claimant to be short-changed.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, Address, Env, Map, Symbol,
+    contract, contracterror, contractimpl, contracttype, token, Address, Env, Map,
 };
+
+pub mod events;
 
 /// How long after an attestation anyone may dispute, in seconds.
 const CHALLENGE_WINDOW: u64 = 24 * 60 * 60;
@@ -134,8 +136,7 @@ impl GoalEscrow {
             .set(&DataKey::Funders(id), &Map::<Address, i128>::new(&env));
         Self::bump(&env, id);
 
-        env.events()
-            .publish((Symbol::new(&env, "goal_created"), id), target_steps);
+        events::goal_created(&env, id, target_steps);
         Ok(id)
     }
 
@@ -177,8 +178,7 @@ impl GoalEscrow {
             .set(&DataKey::Funders(id), &funders);
         Self::bump(&env, id);
 
-        env.events()
-            .publish((Symbol::new(&env, "funded"), id, funder), amount);
+        events::funded(&env, id, funder, amount);
         Ok(())
     }
 
@@ -202,8 +202,7 @@ impl GoalEscrow {
         env.storage().persistent().set(&DataKey::Goal(id), &goal);
         Self::bump(&env, id);
 
-        env.events()
-            .publish((Symbol::new(&env, "attested"), id), steps);
+        events::attested(&env, id, steps);
         Ok(())
     }
 
@@ -227,8 +226,7 @@ impl GoalEscrow {
         env.storage().persistent().set(&DataKey::Goal(id), &goal);
         Self::bump(&env, id);
 
-        env.events()
-            .publish((Symbol::new(&env, "disputed"), id), challenger);
+        events::disputed(&env, id, challenger);
         Ok(())
     }
 
@@ -263,8 +261,7 @@ impl GoalEscrow {
             &payout,
         );
 
-        env.events()
-            .publish((Symbol::new(&env, "claimed"), id), payout);
+        events::claimed(&env, id, payout);
         Ok(payout)
     }
 
@@ -317,8 +314,7 @@ impl GoalEscrow {
             &owed,
         );
 
-        env.events()
-            .publish((Symbol::new(&env, "refunded"), id, funder), owed);
+        events::refunded(&env, id, funder, owed);
         Ok(owed)
     }
 
