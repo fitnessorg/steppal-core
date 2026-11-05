@@ -2,7 +2,10 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{
+        storage::{Instance as _, Persistent as _},
+        Address as _, Ledger,
+    },
     token, Address, Env,
 };
 
@@ -303,4 +306,129 @@ fn contract_balance_is_conserved() {
 
     assert_eq!(f.token_client.balance(&escrow), 0);
     assert_eq!(f.token_client.balance(&f.walker), 50_000);
+}
+
+/// Funding boundary: valid up to deadline - 1, rejected at exact deadline.
+#[test]
+fn funding_deadline_exact_boundary() {
+    let f = setup();
+    let deadline = f.env.ledger().timestamp() + DAY;
+    let id = f
+        .client
+        .create_goal(&f.walker, &f.oracle, &f.token, &10_000, &deadline);
+
+    advance(&f.env, DAY - 1);
+    f.client.fund(&id, &f.sponsor, &1_000);
+    assert_eq!(f.client.get_goal(&id).total, 1_000);
+
+    advance(&f.env, 1);
+    assert_eq!(
+        f.client.try_fund(&id, &f.sponsor, &1_000),
+        Err(Ok(Error::DeadlinePassed))
+    );
+}
+
+/// Unattested refund boundary: rejected before deadline, succeeds at exact deadline.
+#[test]
+fn unattested_refund_exact_deadline_boundary() {
+    let f = setup();
+    let deadline = f.env.ledger().timestamp() + DAY;
+    let id = f
+        .client
+        .create_goal(&f.walker, &f.oracle, &f.token, &10_000, &deadline);
+
+    f.client.fund(&id, &f.sponsor, &5_000);
+
+    advance(&f.env, DAY - 1);
+    assert_eq!(
+        f.client.try_refund(&id, &f.sponsor),
+        Err(Ok(Error::NotRefunding))
+    );
+
+    advance(&f.env, 1);
+    assert_eq!(f.client.refund(&id, &f.sponsor), 5_000);
+}
+
+/// Challenge window boundaries for claim and dispute.
+#[test]
+fn challenge_window_exact_boundaries() {
+    let f = setup();
+    let deadline = f.env.ledger().timestamp() + 7 * DAY;
+    let id = f
+        .client
+        .create_goal(&f.walker, &f.oracle, &f.token, &10_000, &deadline);
+
+    f.client.fund(&id, &f.sponsor, &8_000);
+
+    advance(&f.env, DAY);
+    f.client.attest(&id, &12_000);
+    let goal = f.client.get_goal(&id);
+    let challenge_ends = goal.challenge_ends;
+
+    // Advance to 1 second before challenge_ends
+    let now = f.env.ledger().timestamp();
+    advance(&f.env, challenge_ends - now - 1);
+
+    // Claim is still blocked
+    assert_eq!(f.client.try_claim(&id), Err(Ok(Error::ChallengeWindowOpen)));
+
+    // Advance to exact challenge_ends
+    advance(&f.env, 1);
+
+    // Dispute is now closed at or after challenge_ends
+    assert_eq!(
+        f.client.try_dispute(&id, &f.tipper),
+        Err(Ok(Error::ChallengeWindowClosed))
+    );
+
+    // Claim now succeeds at exact challenge_ends
+    assert_eq!(f.client.claim(&id), 8_000);
+    assert_eq!(f.token_client.balance(&f.walker), 8_000);
+}
+
+/// Storage TTL extension on writes ensures goal and funders data survive beyond threshold.
+#[test]
+fn storage_ttl_extended_on_write() {
+    let f = setup();
+    let deadline = f.env.ledger().timestamp() + 100 * DAY;
+    let id = f
+        .client
+        .create_goal(&f.walker, &f.oracle, &f.token, &20_000, &deadline);
+
+    // Initial TTLs are extended to >= 90 days of ledgers (90 * 17_280 = 1_555_200)
+    let threshold = 90 * 17_280;
+    f.env.as_contract(&f.client.address, || {
+        let goal_ttl = f.env.storage().persistent().get_ttl(&DataKey::Goal(id));
+        let funders_ttl = f.env.storage().persistent().get_ttl(&DataKey::Funders(id));
+        let instance_ttl = f.env.storage().instance().get_ttl();
+
+        assert!(goal_ttl >= threshold);
+        assert!(funders_ttl >= threshold);
+        assert!(instance_ttl >= threshold);
+    });
+
+    // Advance ledger sequence by 65 days worth of ledgers (65 * 17_280).
+    // Remaining TTL drops to ~25 days, which is below the 30-day threshold.
+    let current_seq = f.env.ledger().sequence();
+    let advanced_ledgers = 65 * 17_280;
+    f.env.ledger().set_sequence_number(current_seq + advanced_ledgers);
+
+    f.env.as_contract(&f.client.address, || {
+        let goal_ttl = f.env.storage().persistent().get_ttl(&DataKey::Goal(id));
+        // Remaining TTL is now aged below 30 days
+        assert!(goal_ttl < 30 * 17_280);
+    });
+
+    // Next write (fund) invokes bump(), re-extending TTL back to 90 days.
+    f.client.fund(&id, &f.sponsor, &10_000);
+
+    f.env.as_contract(&f.client.address, || {
+        let goal_ttl = f.env.storage().persistent().get_ttl(&DataKey::Goal(id));
+        let funders_ttl = f.env.storage().persistent().get_ttl(&DataKey::Funders(id));
+        let instance_ttl = f.env.storage().instance().get_ttl();
+
+        assert!(goal_ttl >= threshold);
+        assert!(funders_ttl >= threshold);
+        assert!(instance_ttl >= threshold);
+    });
 }
