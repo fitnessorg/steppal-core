@@ -59,7 +59,13 @@ describe("StepPalClient", () => {
         body: {
           accessToken: "a",
           refreshToken: "r",
-          user: { id: "u1", phone: "+2348031234567", displayName: "Ada", avatarSeed: "s", dailyGoal: 10000 },
+          user: {
+            id: "u1",
+            phone: "+2348031234567",
+            displayName: "Ada",
+            avatarSeed: "s",
+            dailyGoal: 10000,
+          },
         },
       },
     ]);
@@ -194,5 +200,145 @@ describe("StepPalClient", () => {
     await client.logout();
 
     expect(onTokens).toHaveBeenCalledWith(null);
+  });
+
+  describe("pot pagination", () => {
+    it("attaches limit and cursor query parameters when provided", async () => {
+      const { fn, calls } = fakeFetch([
+        { status: 200, body: [] },
+        { status: 200, body: [] },
+      ]);
+      const client = new StepPalClient({ baseUrl: BASE, fetch: fn });
+
+      await client.listPots({ limit: 20 });
+      await client.listPots({ limit: 10, cursor: "2026-10-15T12:00:00.000Z" });
+
+      expect(calls[0]!.url).toBe(`${BASE}/v1/pots?limit=20`);
+      expect(calls[1]!.url).toBe(`${BASE}/v1/pots?limit=10&cursor=2026-10-15T12%3A00%3A00.000Z`);
+    });
+
+    it("leaves query string empty when no pagination parameters are supplied", async () => {
+      const { fn, calls } = fakeFetch([{ status: 200, body: [] }]);
+      const client = new StepPalClient({ baseUrl: BASE, fetch: fn });
+
+      await client.listPots();
+
+      expect(calls[0]!.url).toBe(`${BASE}/v1/pots`);
+    });
+  });
+
+  describe("offline step submission queue", () => {
+    it("automatically queues steps when submission fails due to a network error", async () => {
+      const onQueueChange = vi.fn();
+      let shouldFail = true;
+
+      const fn = vi.fn(async (_url: string, _init: RequestInit = {}) => {
+        if (shouldFail) {
+          throw new TypeError("Failed to fetch");
+        }
+        return new Response(JSON.stringify({ accepted: 1, clamped: 0, rejected: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      });
+
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        fetch: fn as unknown as typeof globalThis.fetch,
+        onStepQueueChange: onQueueChange,
+      });
+
+      const day1 = { day: "2026-11-01", steps: 8500, source: "pedometer" as const };
+
+      // Submit offline
+      await expect(client.submitSteps([day1])).rejects.toThrow("Failed to fetch");
+
+      // Verify item was queued
+      expect(client.getStepQueue()).toEqual([day1]);
+      expect(onQueueChange).toHaveBeenCalledWith([day1]);
+
+      // Network recovers
+      shouldFail = false;
+      const res = await client.flushStepQueue();
+
+      expect(res).toEqual({ accepted: 1, clamped: 0, rejected: [] });
+      expect(client.getStepQueue()).toEqual([]);
+      expect(onQueueChange).toHaveBeenLastCalledWith([]);
+
+      // Duplicate flush does not make a network call and returns null
+      const duplicateRes = await client.flushStepQueue();
+      expect(duplicateRes).toBeNull();
+      expect(fn).toHaveBeenCalledTimes(2); // Initial failed call + 1 successful flush
+    });
+
+    it("deduplicates steps by day keeping the latest entry", async () => {
+      const client = new StepPalClient({ baseUrl: BASE });
+
+      await client.queueSteps([
+        { day: "2026-11-01", steps: 5000 },
+        { day: "2026-11-02", steps: 6000 },
+      ]);
+      await client.queueSteps([
+        { day: "2026-11-01", steps: 9500 }, // Overwrite day 1 with newer count
+      ]);
+
+      expect(client.getStepQueue()).toEqual([
+        { day: "2026-11-01", steps: 9500 },
+        { day: "2026-11-02", steps: 6000 },
+      ]);
+    });
+
+    it("allows restoring from initial queue and clearing queue", async () => {
+      const initial = [{ day: "2026-11-03", steps: 12000 }];
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        initialStepQueue: initial,
+      });
+
+      expect(client.getQueuedSteps()).toEqual(initial);
+
+      await client.clearStepQueue();
+      expect(client.getStepQueue()).toEqual([]);
+    });
+
+    it("does not queue steps on client/server validation errors (4xx)", async () => {
+      const fn = vi.fn(async () => {
+        return new Response(JSON.stringify({ error: "invalid_day_format" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      });
+
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        fetch: fn as unknown as typeof globalThis.fetch,
+      });
+
+      await expect(client.submitSteps([{ day: "invalid-day", steps: 1000 }])).rejects.toMatchObject(
+        {
+          status: 400,
+          code: "invalid_day_format",
+        },
+      );
+
+      expect(client.getStepQueue()).toEqual([]);
+    });
+
+    it("preserves queued steps if flush attempt encounters network failure", async () => {
+      const fn = vi.fn(async () => {
+        throw new TypeError("network down during flush");
+      });
+
+      const queued = [{ day: "2026-11-04", steps: 7000 }];
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        fetch: fn as unknown as typeof globalThis.fetch,
+        initialStepQueue: queued,
+      });
+
+      await expect(client.flushStepQueue()).rejects.toThrow("network down during flush");
+      // Items must remain safely in the queue
+      expect(client.getStepQueue()).toEqual(queued);
+    });
   });
 });
