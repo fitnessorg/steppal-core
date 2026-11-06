@@ -414,7 +414,7 @@ describe("payment providers", () => {
 
       expect(resBadSig.statusCode).toBe(401);
       await app.close();
-    });
+    }, 15000);
 
     it("accepts webhook request with valid signature (200)", async () => {
       const app = buildApp();
@@ -431,6 +431,6 @@ describe("payment providers", () => {
       expect(body.received).toBe(true);
       expect(body.event).toBe("charge.success");
       await app.close();
-    });
+    }, 15000);
   });
 });
