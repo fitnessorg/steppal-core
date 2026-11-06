@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { StepPalClient, StepPalError } from "../src/index.js";
+import { StepPalClient, StepPalError, isPaymentSuccessful } from "../src/index.js";
 
 /** A fetch stand-in that replays queued responses and records what was asked. */
 function fakeFetch(responses: { status: number; body: unknown }[]) {
@@ -399,6 +399,45 @@ describe("StepPalClient", () => {
       expect(calls[0]!.method).toBe("GET");
       expect(res.status).toBe("success");
       expect(res.amountKobo).toBe(500000);
+    });
+
+    it("evaluates payment completion state via helper methods", async () => {
+      const { fn } = fakeFetch([
+        {
+          status: 200,
+          body: { reference: "ref_succ", status: "success", amountKobo: 10000, currency: "NGN" },
+        },
+        {
+          status: 200,
+          body: { reference: "ref_pend", status: "pending", amountKobo: 10000, currency: "NGN" },
+        },
+      ]);
+
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        fetch: fn,
+        getTokens: () => ({ accessToken: "access-token", refreshToken: "refresh-token" }),
+      });
+
+      expect(await client.isPaymentComplete("ref_succ")).toBe(true);
+      expect(await client.isPaymentComplete("ref_pend")).toBe(false);
+
+      expect(
+        isPaymentSuccessful({
+          reference: "ref_1",
+          status: "success",
+          amountKobo: 1000,
+          currency: "NGN",
+        }),
+      ).toBe(true);
+      expect(
+        isPaymentSuccessful({
+          reference: "ref_2",
+          status: "failed",
+          amountKobo: 1000,
+          currency: "NGN",
+        }),
+      ).toBe(false);
     });
 
     it("instructs payout disbursement to bank account", async () => {
