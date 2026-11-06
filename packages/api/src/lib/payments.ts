@@ -74,6 +74,27 @@ export function generatePaymentReference(
   return `${prefix}_${potPart}_${userPart}_${nonce}`;
 }
 
+/**
+ * Validates a Nigerian Uniform Bank Account Number (NUBAN) using the Central
+ * Bank of Nigeria (CBN) check digit modulus-10 algorithm.
+ */
+export function isValidNuban(accountNumber: string, bankCode: string): boolean {
+  if (!/^\d{10}$/.test(accountNumber)) return false;
+  const normalizedBank = bankCode.padStart(3, "0");
+  if (!/^\d{3}$/.test(normalizedBank)) return false;
+
+  const weights = [3, 7, 3, 3, 7, 3, 3, 7, 3, 3, 7, 3];
+  const combined = `${normalizedBank}${accountNumber.slice(0, 9)}`;
+
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += Number(combined[i]) * weights[i]!;
+  }
+
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return checkDigit === Number(accountNumber[9]);
+}
+
 export interface PaymentProvider {
   readonly name: string;
   initializeDeposit(input: InitializeDepositInput): Promise<InitializeDepositResult>;
