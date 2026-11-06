@@ -49,20 +49,14 @@ them without breaking existing callers.
 
 ## API
 
-### Wire deposits and withdrawals to a payment provider
-**File:** `packages/api/src/lib/` (new) · **Difficulty:** hard
+### Wire deposits and withdrawals to a payment provider [COMPLETED - Day 4]
+**File:** `packages/api/src/lib/payments.ts` · **Difficulty:** hard
 
-`PAYMENT_PROVIDER` and the mock exist; the real one does not. The hard half is
-not collection — every Nigerian provider does that — it is **disbursement**:
-paying a winner who is not the merchant. Check that the provider you pick has a
-transfer/recipient API before writing a line.
-
-StepPal must never hold user funds on its own balance sheet. Money moves from
-the payer to the escrow and from the escrow to the winner; the service
-instructs, it does not custody.
-
-**Done when:** a pot with a non-zero stake can be funded and settled end to
-end against the provider's sandbox, with the mock provider still the default.
+Payment provider interface implemented with `MockPaymentProvider` (default) and
+`PaystackPaymentProvider` (sandbox/production) supporting collection (`initializeDeposit`,
+`verifyDeposit`), webhook signature verification (HMAC-SHA512), and non-custodial
+disbursements (`createTransferRecipient`, `initiateDisbursement`). Endpoints exposed
+at `/v1/payments/*` with full unit test coverage.
 
 ### Build the oracle service
 **File:** new package · **Difficulty:** hard
