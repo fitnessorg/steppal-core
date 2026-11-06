@@ -111,3 +111,76 @@ export function checkCrossDayVelocity(claims: StepClaim[]): AntiCheatRuleResult 
     flags: [],
   };
 }
+
+/**
+ * Validates device identity consistency and sensor sources across a pot window.
+ */
+export function checkDeviceConsistency(claims: StepClaim[]): AntiCheatRuleResult {
+  if (claims.length === 0) {
+    return { ruleName: "device_consistency", passed: true, penaltyScore: 0, flags: [] };
+  }
+
+  const sources = new Set(claims.map((c) => c.source));
+  const violations: string[] = [];
+
+  // Switching between mock and hardware sources inside a staked evaluation
+  if (sources.has("mock") && (sources.has("health_connect") || sources.has("pedometer"))) {
+    violations.push("Contradictory sensor sources detected: mixed mock and physical sensor claims");
+  }
+
+  // Device hash proliferation: checking for device spoofing across multiple hardware identifiers
+  const deviceHashes = new Set(claims.map((c) => c.deviceHash).filter(Boolean));
+  if (deviceHashes.size > 3 && claims.length <= 7) {
+    violations.push(
+      `Suspicious device switching: ${deviceHashes.size} distinct devices reported for ${claims.length} days`,
+    );
+  }
+
+  if (violations.length > 0) {
+    return {
+      ruleName: "device_consistency",
+      passed: false,
+      penaltyScore: 0.5,
+      flags: ["DEVICE_INCONSISTENCY", "SOURCE_MISMATCH"],
+      details: violations.join("; "),
+    };
+  }
+
+  return {
+    ruleName: "device_consistency",
+    passed: true,
+    penaltyScore: 0.0,
+    flags: [],
+  };
+}
+
+/**
+ * Detects bot-like unnatural step count uniformity across consecutive days.
+ * Authentic human walking exhibits variance; synthetic generators repeat identical figures.
+ */
+export function checkStepUniformity(claims: StepClaim[]): AntiCheatRuleResult {
+  if (claims.length < 4) {
+    return { ruleName: "step_uniformity", passed: true, penaltyScore: 0, flags: [] };
+  }
+
+  const stepCounts = claims.map((c) => c.steps);
+  const uniqueSteps = new Set(stepCounts);
+
+  // If 4+ days are identical down to the exact digit (e.g. exactly 10,000 every single day)
+  if (uniqueSteps.size === 1 && claims.length >= 4 && stepCounts[0]! > 0) {
+    return {
+      ruleName: "step_uniformity",
+      passed: false,
+      penaltyScore: 0.45,
+      flags: ["UNNATURAL_UNIFORMITY"],
+      details: `Unnatural zero variance: all ${claims.length} days reported identical count of ${stepCounts[0]} steps`,
+    };
+  }
+
+  return {
+    ruleName: "step_uniformity",
+    passed: true,
+    penaltyScore: 0.0,
+    flags: [],
+  };
+}
