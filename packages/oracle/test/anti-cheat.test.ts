@@ -4,6 +4,7 @@ import {
   checkCrossDayVelocity,
   checkDeviceConsistency,
   checkStepUniformity,
+  evaluateUserClaims,
 } from "../src/anti-cheat.js";
 import type { StepClaim } from "../src/types.js";
 
@@ -139,6 +140,44 @@ describe("anti-cheat heuristics", () => {
       const result = checkStepUniformity(claims);
       expect(result.passed).toBe(false);
       expect(result.flags).toContain("UNNATURAL_UNIFORMITY");
+    });
+  });
+
+  describe("evaluateUserClaims composite evaluator", () => {
+    it("evaluates clean legitimate walking patterns as verified winners", () => {
+      const claims = [
+        makeClaim("2026-11-01", 10250),
+        makeClaim("2026-11-02", 11400),
+        makeClaim("2026-11-03", 12100),
+      ];
+      const evaluation = evaluateUserClaims("usr_honest", claims, {
+        dailyGoal: 10000,
+        totalDays: 3,
+      });
+
+      expect(evaluation.passedAntiCheat).toBe(true);
+      expect(evaluation.confidenceScore).toBe(1.0);
+      expect(evaluation.metGoal).toBe(true);
+      expect(evaluation.daysHit).toBe(3);
+      expect(evaluation.verifiedSteps).toBe(33750);
+      expect(evaluation.refusalReason).toBeUndefined();
+    });
+
+    it("zeros verified steps and sets refusal reason when anti-cheat fails", () => {
+      const claims = [
+        makeClaim("2026-11-01", 600),
+        makeClaim("2026-11-02", 75000), // Physical boundary violation + spike
+      ];
+      const evaluation = evaluateUserClaims("usr_cheater", claims, {
+        dailyGoal: 10000,
+        totalDays: 2,
+      });
+
+      expect(evaluation.passedAntiCheat).toBe(false);
+      expect(evaluation.verifiedSteps).toBe(0);
+      expect(evaluation.metGoal).toBe(false);
+      expect(evaluation.confidenceScore).toBeLessThan(0.7);
+      expect(evaluation.refusalReason).toContain("Anti-cheat failed");
     });
   });
 });
