@@ -107,3 +107,29 @@ export class OracleService {
     };
   }
 }
+
+/**
+ * Checks whether the goal escrow deadline has elapsed without an attestation,
+ * enabling trustless refunds for participants under the smart contract's terms.
+ */
+export function isDeadlineExpired(
+  deadlineSeconds: number,
+  currentTimestampSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
+  return currentTimestampSeconds >= deadlineSeconds;
+}
+
+/**
+ * Evaluates whether a goal escrow is eligible for an unattested refund.
+ * In goal-escrow, an open goal past deadline with 0 attested steps unlocks permissionless refunds.
+ */
+export function canRefundUnattested(
+  goal: { status: "open" | "attested" | "disputed" | "refunding" | "claimed"; deadline: number; attestedSteps: number },
+  currentTimestampSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
+  return (
+    goal.status === "open" &&
+    goal.attestedSteps === 0 &&
+    isDeadlineExpired(goal.deadline, currentTimestampSeconds)
+  );
+}
