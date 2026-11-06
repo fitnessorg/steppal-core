@@ -84,6 +84,44 @@ export type StepSubmissionResult = {
   rejected: { day: string; reason: string }[];
 };
 
+export type InitializePaymentInput = {
+  potId: string;
+  amountKobo?: number;
+  callbackUrl?: string;
+};
+
+export type PaymentInitialization = {
+  reference: string;
+  authorizationUrl: string;
+  accessCode?: string;
+  status: "pending" | "success";
+};
+
+export type PaymentVerification = {
+  reference: string;
+  status: "success" | "failed" | "abandoned" | "pending";
+  amountKobo: number;
+  currency: string;
+  paidAt?: string;
+};
+
+export type DisbursePayoutInput = {
+  recipientName: string;
+  accountNumber: string;
+  bankCode: string;
+  amountKobo: number;
+  potId?: string;
+  reason?: string;
+};
+
+export type DisbursementResult = {
+  ok: true;
+  reference: string;
+  transferCode: string;
+  status: "pending" | "success" | "failed";
+  amountKobo: number;
+};
+
 /** What the server said, with the status attached so callers can branch on it. */
 export class StepPalError extends Error {
   constructor(

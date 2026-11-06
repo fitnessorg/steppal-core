@@ -1,6 +1,11 @@
 import {
   StepPalError,
+  type DisbursePayoutInput,
+  type DisbursementResult,
+  type InitializePaymentInput,
   type ListPotsQuery,
+  type PaymentInitialization,
+  type PaymentVerification,
   type PotDetail,
   type PotSummary,
   type Session,
@@ -136,6 +141,20 @@ export class StepPalClient {
 
   leavePot(id: string): Promise<{ ok: true }> {
     return this.call("POST", `/v1/pots/${id}/leave`);
+  }
+
+  // ---- payments ----
+
+  initializePayment(input: InitializePaymentInput): Promise<PaymentInitialization> {
+    return this.call("POST", "/v1/payments/initialize", { body: input });
+  }
+
+  verifyPayment(reference: string): Promise<PaymentVerification> {
+    return this.call("GET", `/v1/payments/verify/${encodeURIComponent(reference)}`);
+  }
+
+  disbursePayout(input: DisbursePayoutInput): Promise<DisbursementResult> {
+    return this.call("POST", "/v1/payments/disburse", { body: input });
   }
 
   // ---- steps ----
