@@ -4,7 +4,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { pots, users } from "../db/schema.js";
-import { getPaymentProvider } from "../lib/payments.js";
+import { getPaymentProvider, generatePaymentReference } from "../lib/payments.js";
 
 const initializePaymentSchema = z.object({
   potId: z.string().uuid(),
@@ -56,7 +56,7 @@ export function registerPaymentRoutes(app: FastifyInstance) {
       const email = user ? `${user.phone.replace(/\D/g, "")}@steppal.io` : `${req.userId!}@steppal.io`;
 
       const stakeAmount = amountKobo ?? pot.stakeKobo;
-      const reference = `stake_${pot.id.slice(0, 8)}_${req.userId!.slice(0, 8)}_${Date.now()}`;
+      const reference = generatePaymentReference("stake", pot.id, req.userId!);
 
       const provider = getPaymentProvider();
       const result = await provider.initializeDeposit({
@@ -146,7 +146,7 @@ export function registerPaymentRoutes(app: FastifyInstance) {
         description: `StepPal payout for user ${req.userId!}`,
       });
 
-      const reference = `disb_${potId ? potId.slice(0, 8) : "pot"}_${req.userId!.slice(0, 8)}_${Date.now()}`;
+      const reference = generatePaymentReference("disb", potId, req.userId!);
       const result = await provider.initiateDisbursement({
         reference,
         amountKobo,

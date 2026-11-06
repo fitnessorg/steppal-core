@@ -63,6 +63,17 @@ export interface WebhookEvent<T = Record<string, unknown>> {
   data: T;
 }
 
+export function generatePaymentReference(
+  prefix: "stake" | "disb",
+  potId?: string,
+  userId?: string,
+): string {
+  const potPart = potId ? potId.replace(/-/g, "").slice(0, 8) : "pot";
+  const userPart = userId ? userId.replace(/-/g, "").slice(0, 8) : "usr";
+  const nonce = crypto.randomBytes(6).toString("hex");
+  return `${prefix}_${potPart}_${userPart}_${nonce}`;
+}
+
 export interface PaymentProvider {
   readonly name: string;
   initializeDeposit(input: InitializeDepositInput): Promise<InitializeDepositResult>;
