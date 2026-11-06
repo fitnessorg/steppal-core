@@ -8,6 +8,7 @@ import {
   resetMockPayments,
   mockPaymentState,
   generatePaymentReference,
+  isValidNuban,
 } from "../src/lib/payments.js";
 import { resetEnvForTest } from "../src/lib/env.js";
 import { buildApp } from "../src/app.js";
@@ -370,6 +371,23 @@ describe("payment providers", () => {
     it("handles optional missing IDs with default prefixes", () => {
       const ref = generatePaymentReference("disb");
       expect(ref).toMatch(/^disb_pot_usr_[0-9a-f]{12}$/);
+    });
+  });
+
+  describe("NUBAN validation algorithm", () => {
+    it("validates correct NUBAN check digit for CBN specification", () => {
+      // 058 + 012345678 -> sum 215 -> check digit 5
+      expect(isValidNuban("0123456785", "058")).toBe(true);
+      expect(isValidNuban("0123456784", "058")).toBe(false);
+      expect(isValidNuban("0123456786", "058")).toBe(false);
+    });
+
+    it("rejects invalid lengths or non-numeric inputs", () => {
+      expect(isValidNuban("123456789", "058")).toBe(false);
+      expect(isValidNuban("12345678901", "058")).toBe(false);
+      expect(isValidNuban("012345678a", "058")).toBe(false);
+      expect(isValidNuban("0123456785", "abc")).toBe(false);
+      expect(isValidNuban("0123456785", "1234")).toBe(false);
     });
   });
 
