@@ -153,6 +153,11 @@ export class StepPalClient {
     return this.call("GET", `/v1/payments/verify/${encodeURIComponent(reference)}`);
   }
 
+  async isPaymentComplete(reference: string): Promise<boolean> {
+    const res = await this.verifyPayment(reference);
+    return res.status === "success";
+  }
+
   disbursePayout(input: DisbursePayoutInput): Promise<DisbursementResult> {
     return this.call("POST", "/v1/payments/disburse", { body: input });
   }

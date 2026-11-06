@@ -105,6 +105,10 @@ export type PaymentVerification = {
   paidAt?: string;
 };
 
+export function isPaymentSuccessful(verification: PaymentVerification): boolean {
+  return verification.status === "success";
+}
+
 export type DisbursePayoutInput = {
   recipientName: string;
   accountNumber: string;
