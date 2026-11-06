@@ -7,6 +7,7 @@ import {
   resetPaymentProviderForTest,
   resetMockPayments,
   mockPaymentState,
+  generatePaymentReference,
 } from "../src/lib/payments.js";
 import { resetEnvForTest } from "../src/lib/env.js";
 import { buildApp } from "../src/app.js";
@@ -349,6 +350,26 @@ describe("payment providers", () => {
           bankCode: "999",
         }),
       ).rejects.toThrow("Paystack API error [HTTP 400]: Cannot resolve account");
+    });
+  });
+
+  describe("payment reference generator", () => {
+    it("generates references with prefix, stripped IDs, and random nonce", () => {
+      const ref = generatePaymentReference("stake", "11112222-3333-4444-5555-666677778888", "aaaabbbb-cccc-dddd-eeee-ffff00001111");
+      expect(ref).toMatch(/^stake_11112222_aaaabbbb_[0-9a-f]{12}$/);
+    });
+
+    it("generates unique references across repeated invocations", () => {
+      const set = new Set<string>();
+      for (let i = 0; i < 500; i++) {
+        set.add(generatePaymentReference("stake", "pot_id", "user_id"));
+      }
+      expect(set.size).toBe(500);
+    });
+
+    it("handles optional missing IDs with default prefixes", () => {
+      const ref = generatePaymentReference("disb");
+      expect(ref).toMatch(/^disb_pot_usr_[0-9a-f]{12}$/);
     });
   });
 
