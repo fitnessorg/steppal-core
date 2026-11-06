@@ -63,6 +63,19 @@ export interface WebhookEvent<T = Record<string, unknown>> {
   data: T;
 }
 
+export const KNOWN_PAYMENT_WEBHOOK_EVENTS = [
+  "charge.success",
+  "transfer.success",
+  "transfer.failed",
+  "transfer.reversed",
+] as const;
+
+export type KnownPaymentWebhookEvent = (typeof KNOWN_PAYMENT_WEBHOOK_EVENTS)[number];
+
+export function isKnownPaymentWebhookEvent(event: string): event is KnownPaymentWebhookEvent {
+  return (KNOWN_PAYMENT_WEBHOOK_EVENTS as readonly string[]).includes(event);
+}
+
 export function generatePaymentReference(
   prefix: "stake" | "disb",
   potId?: string,

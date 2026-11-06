@@ -4,7 +4,11 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { pots, users } from "../db/schema.js";
-import { getPaymentProvider, generatePaymentReference } from "../lib/payments.js";
+import {
+  getPaymentProvider,
+  generatePaymentReference,
+  isKnownPaymentWebhookEvent,
+} from "../lib/payments.js";
 
 const initializePaymentSchema = z.object({
   potId: z.string().uuid(),
@@ -220,15 +224,16 @@ export function registerPaymentRoutes(app: FastifyInstance) {
       }
 
       // Handle specific webhook event types
-      if (event.event === "charge.success") {
-        // Confirmed deposit / stake payment
-        req.log.info({ reference: event.data.reference }, "Payment charge.success received");
-      } else if (event.event === "transfer.success") {
-        // Confirmed disbursement / payout transfer
-        req.log.info({ reference: event.data.reference }, "Payment transfer.success received");
-      } else if (event.event === "transfer.failed" || event.event === "transfer.reversed") {
-        // Failed disbursement
-        req.log.warn({ reference: event.data.reference }, "Payment transfer failure received");
+      if (isKnownPaymentWebhookEvent(event.event)) {
+        if (event.event === "charge.success") {
+          req.log.info({ reference: event.data.reference }, "Payment charge.success received");
+        } else if (event.event === "transfer.success") {
+          req.log.info({ reference: event.data.reference }, "Payment transfer.success received");
+        } else if (event.event === "transfer.failed" || event.event === "transfer.reversed") {
+          req.log.warn({ reference: event.data.reference }, "Payment transfer failure received");
+        }
+      } else {
+        req.log.info({ event: event.event }, "Unhandled payment webhook event ignored");
       }
 
       return reply.code(200).send({
