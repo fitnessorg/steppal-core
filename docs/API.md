@@ -149,12 +149,16 @@ to `pending`, `success`, `abandoned`, or `failed`.
 
 Creates or resolves a transfer recipient (e.g. Paystack `/transferrecipient`)
 and instructs an automated disbursement transfer to the winner's Nigerian bank
-account.
+account. Account numbers must conform to 10-digit NUBAN standards validated via
+the Central Bank of Nigeria (CBN) modulus-10 check digit algorithm.
 
 **`POST /v1/payments/webhook`** — unauthenticated provider webhook receiver.
-Verifies `x-paystack-signature` (HMAC-SHA512) against provider secret; rejected
-with `401 invalid_signature` on tampered or missing signatures. Processes
-`charge.success`, `transfer.success`, and `transfer.failed`.
+Verifies `x-paystack-signature` (HMAC-SHA512) against provider secret using
+constant-time byte comparison (`crypto.timingSafeEqual`); rejected with
+`401 invalid_signature` on tampered or missing signatures. Processes typed
+events including `charge.success`, `transfer.success`, and `transfer.failed`.
+Payment references follow the namespaced format `{prefix}_{potId}_{userId}_{nonce}`
+with cryptographically random nonces guaranteeing replay protection.
 
 ## Settlement
 
