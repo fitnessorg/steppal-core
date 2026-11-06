@@ -1,4 +1,4 @@
-import type { AntiCheatRuleResult, StepClaim } from "./types.js";
+import type { AntiCheatFlag, AntiCheatRuleResult, StepClaim, UserAttestationEvaluation } from "./types.js";
 
 /** Max physically credible steps for an active human in one calendar day */
 export const MAX_PHYSICAL_DAILY_STEPS = 50000;
@@ -182,5 +182,78 @@ export function checkStepUniformity(claims: StepClaim[]): AntiCheatRuleResult {
     passed: true,
     penaltyScore: 0.0,
     flags: [],
+  };
+}
+
+export interface EvaluateUserOptions {
+  dailyGoal: number;
+  totalDays: number;
+  confidenceThreshold?: number; // defaults to 0.70
+}
+
+/**
+ * Runs all heuristic anti-cheat rules against a user's multi-day step claims,
+ * computing a unified confidence score and determining verification status.
+ */
+export function evaluateUserClaims(
+  userId: string,
+  claims: StepClaim[],
+  options: EvaluateUserOptions,
+): UserAttestationEvaluation {
+  const threshold = options.confidenceThreshold ?? 0.7;
+
+  const rules: AntiCheatRuleResult[] = [
+    checkPhysicalBoundaries(claims),
+    checkCrossDayVelocity(claims),
+    checkDeviceConsistency(claims),
+    checkStepUniformity(claims),
+  ];
+
+  const allFlags: AntiCheatFlag[] = [];
+  let totalPenalty = 0;
+
+  for (const r of rules) {
+    if (!r.passed) {
+      allFlags.push(...r.flags);
+      totalPenalty += r.penaltyScore;
+    }
+  }
+
+  const confidenceScore = Math.max(0, Math.round((1.0 - Math.min(1.0, totalPenalty)) * 100) / 100);
+  const passedAntiCheat = confidenceScore >= threshold && allFlags.length === 0;
+
+  let totalStepsClaimed = 0;
+  let verifiedSteps = 0;
+  let daysHit = 0;
+
+  for (const c of claims) {
+    totalStepsClaimed += c.steps;
+    if (passedAntiCheat) {
+      verifiedSteps += c.steps;
+      if (c.steps >= options.dailyGoal) {
+        daysHit++;
+      }
+    }
+  }
+
+  const metGoal = passedAntiCheat && daysHit >= options.totalDays;
+
+  let refusalReason: string | undefined;
+  if (!passedAntiCheat) {
+    refusalReason = `Anti-cheat failed (confidence: ${confidenceScore}, flags: [${allFlags.join(", ")}])`;
+  }
+
+  return {
+    userId,
+    totalStepsClaimed,
+    verifiedSteps,
+    daysHit,
+    daysPossible: options.totalDays,
+    metGoal,
+    confidenceScore,
+    passedAntiCheat,
+    ruleResults: rules,
+    flags: allFlags,
+    refusalReason,
   };
 }
