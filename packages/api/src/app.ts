@@ -10,6 +10,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerPotRoutes } from "./routes/pots.js";
 import { registerStepRoutes } from "./routes/steps.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
 import { authPlugin } from "./plugins/auth.js";
 
 export function buildApp() {
@@ -25,6 +26,20 @@ export function buildApp() {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (req, body, done) => {
+      (req as unknown as { rawBody?: string }).rawBody = body as string;
+      try {
+        const json = JSON.parse(body as string);
+        done(null, json);
+      } catch (err: unknown) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   app.register(cors);
   app.register(authPlugin);
 
@@ -36,6 +51,7 @@ export function buildApp() {
     registerAuthRoutes(app);
     registerPotRoutes(app);
     registerStepRoutes(app);
+    registerPaymentRoutes(app);
   });
 
   return app;

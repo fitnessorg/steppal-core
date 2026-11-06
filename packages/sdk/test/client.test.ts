@@ -341,4 +341,97 @@ describe("StepPalClient", () => {
       expect(client.getStepQueue()).toEqual(queued);
     });
   });
+
+  describe("payments", () => {
+    it("initializes payment with authorization url and access code", async () => {
+      const { fn, calls } = fakeFetch([
+        {
+          status: 200,
+          body: {
+            reference: "ref_123",
+            authorizationUrl: "https://checkout.paystack.com/auth-123",
+            accessCode: "acc_123",
+            status: "pending",
+          },
+        },
+      ]);
+
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        fetch: fn,
+        getTokens: () => ({ accessToken: "access-token", refreshToken: "refresh-token" }),
+      });
+
+      const res = await client.initializePayment({
+        potId: "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+        amountKobo: 500000,
+      });
+
+      expect(calls[0]!.url).toBe(`${BASE}/v1/payments/initialize`);
+      expect(calls[0]!.method).toBe("POST");
+      expect(calls[0]!.headers.authorization).toBe("Bearer access-token");
+      expect(res.reference).toBe("ref_123");
+      expect(res.authorizationUrl).toBe("https://checkout.paystack.com/auth-123");
+    });
+
+    it("verifies payment by reference", async () => {
+      const { fn, calls } = fakeFetch([
+        {
+          status: 200,
+          body: {
+            reference: "ref_123",
+            status: "success",
+            amountKobo: 500000,
+            currency: "NGN",
+          },
+        },
+      ]);
+
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        fetch: fn,
+        getTokens: () => ({ accessToken: "access-token", refreshToken: "refresh-token" }),
+      });
+
+      const res = await client.verifyPayment("ref_123");
+
+      expect(calls[0]!.url).toBe(`${BASE}/v1/payments/verify/ref_123`);
+      expect(calls[0]!.method).toBe("GET");
+      expect(res.status).toBe("success");
+      expect(res.amountKobo).toBe(500000);
+    });
+
+    it("instructs payout disbursement to bank account", async () => {
+      const { fn, calls } = fakeFetch([
+        {
+          status: 200,
+          body: {
+            ok: true,
+            reference: "disb_ref_456",
+            transferCode: "TRF_456",
+            status: "success",
+            amountKobo: 750000,
+          },
+        },
+      ]);
+
+      const client = new StepPalClient({
+        baseUrl: BASE,
+        fetch: fn,
+        getTokens: () => ({ accessToken: "access-token", refreshToken: "refresh-token" }),
+      });
+
+      const res = await client.disbursePayout({
+        recipientName: "Ada Lovelace",
+        accountNumber: "0123456789",
+        bankCode: "058",
+        amountKobo: 750000,
+      });
+
+      expect(calls[0]!.url).toBe(`${BASE}/v1/payments/disburse`);
+      expect(calls[0]!.method).toBe("POST");
+      expect(res.transferCode).toBe("TRF_456");
+      expect(res.status).toBe("success");
+    });
+  });
 });

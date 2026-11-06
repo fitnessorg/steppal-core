@@ -16,6 +16,9 @@ const envSchema = z.object({
   TERMII_SENDER_ID: z.string().default("StepPal"),
   TERMII_BASE_URL: z.string().default("https://api.ng.termii.com"),
   PAYMENT_PROVIDER: z.enum(["mock", "paystack"]).default("mock"),
+  PAYSTACK_SECRET_KEY: z.string().optional(),
+  PAYSTACK_PUBLIC_KEY: z.string().optional(),
+  PAYSTACK_BASE_URL: z.string().default("https://api.paystack.co"),
 
   DAILY_STEP_CAP: z.coerce.number().int().positive().default(25000),
 });

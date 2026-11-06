@@ -120,6 +120,42 @@ settlement bug waiting for a bad week of network.
 Rejected days come back named, so the app can tell a user their clock is wrong
 instead of quietly losing their steps.
 
+## Payments
+
+StepPal operates under a non-custodial abstraction: money moves from the payer
+to the escrow and from escrow to the winner; StepPal instructs, it never
+custodies funds on its own balance sheet.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| POST | `/v1/payments/initialize` | yes | Initiate a stake deposit checkout flow |
+| GET | `/v1/payments/verify/:reference` | yes | Check status of a deposit transaction |
+| POST | `/v1/payments/disburse` | yes | Instruct winner payout transfer to NUBAN account |
+| POST | `/v1/payments/webhook` | — | Receive provider payment/transfer webhooks |
+
+**`POST /v1/payments/initialize`** — `{ potId, amountKobo?, callbackUrl? }` → `{ reference, authorizationUrl, accessCode?, status }`
+
+Initiates collection with the active provider. When using `PAYMENT_PROVIDER=mock`,
+instantly generates a sandbox authorization URL and logs to in-memory state.
+When using `PAYMENT_PROVIDER=paystack`, creates a transaction via Paystack's
+`/transaction/initialize` API.
+
+**`GET /v1/payments/verify/:reference`** — `200 { reference, status, amountKobo, currency, paidAt? }`
+
+Queries transaction status directly from the provider. Statuses are normalized
+to `pending`, `success`, `abandoned`, or `failed`.
+
+**`POST /v1/payments/disburse`** — `{ recipientName, accountNumber, bankCode, amountKobo, potId?, reason? }` → `{ ok: true, reference, transferCode, status, amountKobo }`
+
+Creates or resolves a transfer recipient (e.g. Paystack `/transferrecipient`)
+and instructs an automated disbursement transfer to the winner's Nigerian bank
+account.
+
+**`POST /v1/payments/webhook`** — unauthenticated provider webhook receiver.
+Verifies `x-paystack-signature` (HMAC-SHA512) against provider secret; rejected
+with `401 invalid_signature` on tampered or missing signatures. Processes
+`charge.success`, `transfer.success`, and `transfer.failed`.
+
 ## Settlement
 
 Not an endpoint. `pnpm settle` runs `src/jobs/settle.ts`, intended for a daily
@@ -156,4 +192,5 @@ Stable machine-readable codes, not prose. The SDK surfaces them as
 
 See `.env.example`. `SMS_PROVIDER=console` logs codes instead of sending them,
 which is what makes the whole auth flow testable with no account anywhere.
-`PAYMENT_PROVIDER=mock` is the default and the only one implemented.
+`PAYMENT_PROVIDER=mock` is the default zero-network provider; `PAYMENT_PROVIDER=paystack`
+connects to the live or sandbox Paystack API for collection and NUBAN disbursements.
