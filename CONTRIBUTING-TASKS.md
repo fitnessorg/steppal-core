@@ -58,20 +58,14 @@ Payment provider interface implemented with `MockPaymentProvider` (default) and
 disbursements (`createTransferRecipient`, `initiateDisbursement`). Endpoints exposed
 at `/v1/payments/*` with full unit test coverage.
 
-### Build the oracle service
-**File:** new package · **Difficulty:** hard
+### Build the oracle service [COMPLETED - Day 5]
+**File:** `packages/oracle/` · **Difficulty:** hard
 
-The contract's `attest(id, steps)` is oracle-only. Nothing currently signs
-those attestations. The service reads settled `step_days`, applies the
-anti-cheat rules that need full history (velocity across days, device
-consistency, distance cross-checks — none of which belong in the per-write
-ingest path), and submits a signed attestation.
-
-It must be able to stay silent. The contract's deadline exists precisely so
-that a silent oracle cannot trap anyone's money.
-
-**Done when:** a finished pot on testnet pays out from an attestation this
-service signed, and a goal it refuses to attest refunds on deadline.
+Implemented standalone `@steppal/oracle` service evaluating settled multi-day claims
+against physical boundaries, cross-day velocity spikes, device consistency, and
+synthetic uniformity. Includes Soroban RPC transaction signer and mock signer for
+`attest(id, steps)`, with guaranteed silent oracle timeout fallback. Documented in
+`docs/anti-cheat.md`.
 
 ### Connect settlement to the contract
 **File:** `packages/api/src/lib/settlement.ts` · **Difficulty:** hard
