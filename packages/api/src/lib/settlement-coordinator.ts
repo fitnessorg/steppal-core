@@ -147,3 +147,64 @@ export async function executeTwoPhaseSettlement(
 
   return entry;
 }
+
+export interface RecoveryReport {
+  inspected: number;
+  recovered: string[];
+  failed: { potId: string; error: string }[];
+}
+
+/**
+ * Scans the settlement journal for interrupted/orphaned settlements in
+ * `intent_recorded` or `chain_attested` states, reconciles on-chain status,
+ * and drives them to `finalized`.
+ */
+export async function recoverOrphanedSettlements(options: {
+  finalizePersistence: (entry: SettlementJournalEntry) => Promise<void>;
+  journal?: SettlementJournalStore;
+  escrow?: EscrowContractAdapter;
+}): Promise<RecoveryReport> {
+  const journal = options.journal ?? DefaultSettlementJournal;
+  const escrow = options.escrow ?? getEscrowAdapter();
+
+  const orphaned = await journal.listOrphaned();
+  const recovered: string[] = [];
+  const failed: { potId: string; error: string }[] = [];
+
+  for (const entry of orphaned) {
+    try {
+      // If interrupted during Phase 2, check if on-chain goal state already advanced
+      if (entry.phase === "intent_recorded" && entry.stakeKobo > 0) {
+        const onChain = await escrow.getGoalState(entry.goalId);
+        if (onChain && onChain.status !== "open") {
+          entry.phase = "chain_attested";
+          entry.transactionHash =
+            onChain.transactionHash ?? `0x_reconciled_${entry.goalId}`;
+          await journal.save(entry);
+        }
+      }
+
+      const completed = await executeTwoPhaseSettlement({
+        potId: entry.potId,
+        stakeKobo: entry.stakeKobo,
+        daysPossible: entry.daysPossible,
+        members: entry.members,
+        finalizePersistence: options.finalizePersistence,
+        journal,
+        escrow,
+      });
+
+      if (completed.phase === "finalized") {
+        recovered.push(entry.potId);
+      }
+    } catch (err) {
+      failed.push({ potId: entry.potId, error: (err as Error).message });
+    }
+  }
+
+  return {
+    inspected: orphaned.length,
+    recovered,
+    failed,
+  };
+}
