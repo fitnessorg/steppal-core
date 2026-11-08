@@ -3,6 +3,7 @@ import { db } from "../db/client.js";
 import { potResults, pots } from "../db/schema.js";
 import { progressFor } from "./pots.js";
 import { todayKey } from "./dates.js";
+import { executeTwoPhaseSettlement } from "./settlement-coordinator.js";
 
 export type Settlement = {
   potId: string;
@@ -110,7 +111,8 @@ export async function settlePot(potId: string): Promise<Settlement | null> {
   if (members.length === 0) return null;
 
   const daysPossible = window.length;
-  const computed = computeSettlementPayouts({
+  const entry = await executeTwoPhaseSettlement({
+    potId: pot.id,
     stakeKobo: pot.stakeKobo,
     daysPossible,
     members: members.map((m) => ({
@@ -118,32 +120,41 @@ export async function settlePot(potId: string): Promise<Settlement | null> {
       daysHit: m.daysHit,
       totalSteps: m.totalSteps,
     })),
-  });
+    finalizePersistence: async (journalEntry) => {
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(potResults)
+          .values(
+            journalEntry.members.map((m) => ({
+              potId: pot.id,
+              userId: m.userId,
+              daysHit: m.daysHit,
+              daysPossible: journalEntry.daysPossible,
+              totalSteps: m.totalSteps,
+              metGoal: (m.daysHit === journalEntry.daysPossible ? "yes" : "no") as
+                | "yes"
+                | "no",
+              payoutKobo:
+                journalEntry.computed.payouts.find((p) => p.userId === m.userId)
+                  ?.payoutKobo ?? 0,
+            })),
+          )
+          .onConflictDoNothing();
 
-  await db.transaction(async (tx) => {
-    await tx.insert(potResults).values(
-      members.map((m) => ({
-        potId: pot.id,
-        userId: m.userId,
-        daysHit: m.daysHit,
-        daysPossible,
-        totalSteps: m.totalSteps,
-        metGoal: (m.daysHit === daysPossible ? "yes" : "no") as "yes" | "no",
-        payoutKobo: computed.payouts.find((p) => p.userId === m.userId)?.payoutKobo ?? 0,
-      })),
-    );
-
-    await tx
-      .update(pots)
-      .set({ status: "settled", settledAt: new Date() })
-      .where(eq(pots.id, pot.id));
+        await tx
+          .update(pots)
+          .set({ status: "settled", settledAt: new Date() })
+          .where(eq(pots.id, pot.id));
+      });
+    },
   });
 
   return {
     potId: pot.id,
-    winners: computed.winners,
-    losers: computed.losers,
-    payouts: computed.payouts,
+    winners: entry.computed.winners,
+    losers: entry.computed.losers,
+    payouts: entry.computed.payouts,
+    transactionHash: entry.transactionHash,
   };
 }
 
