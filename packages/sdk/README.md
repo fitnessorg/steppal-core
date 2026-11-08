@@ -12,21 +12,17 @@ Zero-dependency TypeScript client for the StepPal HTTP API, designed for React N
 ## Usage
 
 ```ts
-import { createStepPalClient } from "@steppal/sdk";
+import { StepPalClient } from "@steppal/sdk";
 
-const client = createStepPalClient({
+const client = new StepPalClient({
   baseUrl: "http://localhost:3000",
-  onSessionChange(session) {
-    // Persist rotated tokens to SecureStore / Keychain
-  },
-  onStepQueueChange(queue) {
-    // Persist offline step queue to AsyncStorage
-  },
+  getTokens: () => storedTokens, // read from SecureStore / Keychain
+  onStepQueueChange: (queue) => persist(queue), // e.g. AsyncStorage
 });
 
 await client.requestCode("08031234567");
 const session = await client.verifyCode("08031234567", "418245", "Ada");
 
 const pots = await client.listPots({ limit: 20 });
-await client.submitSteps([{ day: "2026-03-10", steps: 9500, source: "healthkit" }]);
+await client.submitSteps([{ day: "2026-03-10", steps: 9500, source: "pedometer" }]);
 ```
