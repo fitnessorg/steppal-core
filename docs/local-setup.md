@@ -119,3 +119,70 @@ curl -X POST http://localhost:3000/v1/auth/verify-code \
 
 - Running `pnpm settle` or `pnpm settle:recover` executes the full two-phase settlement coordinator (`intent_recorded -> chain_attested -> finalized`) against `MockEscrowAdapter` by default.
 - No Soroban RPC node, funded keypair, or Stellar network connection is required.
+
+---
+
+## Running Tests (With or Without PostgreSQL)
+
+### 1. Zero-Database Unit & Mock Tests
+
+If you do not have Docker or PostgreSQL running, you can still run all SDK tests, Oracle tests, and API unit/mock tests:
+
+```bash
+# Run SDK test suite (no database required)
+pnpm --filter @steppal/sdk test
+
+# Run Oracle anti-cheat & signer test suite (no database required)
+pnpm --filter @steppal/oracle test
+
+# Run API unit and injected route tests (no database required)
+pnpm --filter @steppal/api test \
+  test/phone.test.ts \
+  test/sms.test.ts \
+  test/otp.test.ts \
+  test/pots-pagination.test.ts \
+  test/payments.test.ts \
+  test/settlement-pure.test.ts \
+  test/escrow.test.ts \
+  test/settlement-coordinator.test.ts
+```
+
+### 2. Full Database Integration Tests
+
+The API database integration suites (`test/auth.test.ts`, `test/pots.test.ts`, `test/steps.test.ts`, `test/settlement.test.ts`) verify database constraints, unique indexes, and transactions against a live PostgreSQL instance:
+
+```bash
+docker compose up -d
+pnpm db:migrate
+pnpm test
+```
+
+---
+
+## Optional: Soroban Smart Contract Setup
+
+You only need the Rust toolchain if you are editing `contracts/goal-escrow/`.
+
+### 1. Run Contract Unit Tests (No Stellar Account or Network Required)
+
+`goal-escrow` uses `soroban-sdk` testutils to simulate the ledger, token contracts, timestamps, and storage TTL archival entirely in-process:
+
+```bash
+rustup target add wasm32v1-none
+cd contracts && cargo test
+```
+
+### 2. Deploy to Stellar Testnet (Only for Contract Deployment)
+
+If you want to deploy your own instance of `goal-escrow` to Stellar Testnet:
+
+1. Install the [Stellar CLI](https://developers.stellar.org/docs/build/smart-contracts/getting-started).
+2. Generate and fund a testnet identity:
+   ```bash
+   stellar keys generate dev --network testnet --fund
+   ```
+3. Run the deployment script:
+   ```bash
+   bash scripts/deploy-testnet.sh dev
+   ```
+4. Set `ESCROW_PROVIDER=soroban` and paste the resulting contract ID into `GOAL_ESCROW_CONTRACT_ID` in `packages/api/.env`.
