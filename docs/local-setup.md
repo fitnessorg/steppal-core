@@ -74,3 +74,48 @@ Verify the server is live:
 curl http://localhost:3000/health
 # {"ok":true,"version":"0.1.0"}
 ```
+
+---
+
+## Working with Local Mock Providers
+
+All external side effects are abstracted behind provider interfaces that default to local implementations.
+
+### 1. SMS Authentication (`SMS_PROVIDER=console`)
+
+Instead of calling Termii, the console SMS provider prints the 6-digit OTP directly to your terminal stdout:
+
+```bash
+curl -X POST http://localhost:3000/v1/auth/request-code \
+  -H 'content-type: application/json' \
+  -d '{"phone":"08031234567"}'
+```
+
+Check your `pnpm dev` terminal output:
+
+```text
+[sms:console] -> +2348031234567: 418245 is your StepPal code.
+```
+
+Exchange that code for an access and refresh token pair:
+
+```bash
+curl -X POST http://localhost:3000/v1/auth/verify-code \
+  -H 'content-type: application/json' \
+  -d '{"phone":"08031234567","code":"418245","displayName":"Ada"}'
+```
+
+### 2. Payments & NUBAN Disbursements (`PAYMENT_PROVIDER=mock`)
+
+`MockPaymentProvider` (`packages/api/src/lib/payments.ts`) simulates Paystack checkout initialization, transaction verification, NUBAN transfer recipient creation, and HMAC-SHA512 webhook verification in memory:
+
+- `POST /v1/payments/initialize` returns a deterministic sandbox URL (`https://checkout.steppal.local/pay/<reference>`) and records a pending deposit in memory.
+- `GET /v1/payments/verify/:reference` returns the simulated transaction status.
+- `POST /v1/payments/disburse` validates the 10-digit Nigerian NUBAN check digit and returns a mock transfer receipt without touching any banking rails.
+
+### 3. On-Chain Escrow & Settlement (`ESCROW_PROVIDER=mock`)
+
+`MockEscrowAdapter` (`packages/api/src/lib/escrow.ts`) mirrors the state machine of the Soroban `goal-escrow` contract (`Funding -> Attested -> Completed / Refunding`) inside Node memory:
+
+- Running `pnpm settle` or `pnpm settle:recover` executes the full two-phase settlement coordinator (`intent_recorded -> chain_attested -> finalized`) against `MockEscrowAdapter` by default.
+- No Soroban RPC node, funded keypair, or Stellar network connection is required.
