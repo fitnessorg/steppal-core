@@ -14,17 +14,17 @@ itself lives in [steppal-mobile](https://github.com/fitnessorg/steppal-mobile).
 
 ## What works today
 
-| | Status |
+| Component | Status |
 | --- | --- |
-| Phone OTP auth, rotating refresh tokens | Built, 13 tests |
-| Pots — create, join by code, standings, leave | Built, 7 tests |
+| Phone OTP auth, rotating refresh tokens, Termii & console SMS, OTP pruning | Built, 25 tests |
+| Pots — create, join by code, cursor pagination, standings, leave | Built, 11 tests |
 | Step ingestion with server-side validation | Built, 6 tests |
-| Settlement engine | Built, 7 tests |
-| `@steppal/sdk` typed client | Built, 10 tests |
-| `goal-escrow` Soroban contract | Built, 12 tests, [deployed to testnet](https://stellar.expert/explorer/testnet/contract/CCEMDKD4POJ4H2EF3JSY73W33OVB34X7KWV7UM6VRESTPNTHJ4OG37TT) |
-| Payments (deposit / withdrawal) | Interface only — mock provider |
-| Oracle service (signed attestations) | Not started |
-| API ↔ contract wiring | Not started |
+| Settlement engine & two-phase crash-resilient coordinator | Built, 24 tests |
+| Payments — Paystack & mock provider, NUBAN validation, HMAC webhooks | Built, 21 tests |
+| `@steppal/oracle` — anti-cheat heuristics, Soroban signer, silent fallback | Built, 21 tests |
+| `@steppal/sdk` — typed client, auto-refresh, offline step queue, payments | Built, 21 tests |
+| `goal-escrow` Soroban contract (typed events, storage TTL archival) | Built, 16 tests, [deployed to testnet](https://stellar.expert/explorer/testnet/contract/CCEMDKD4POJ4H2EF3JSY73W33OVB34X7KWV7UM6VRESTPNTHJ4OG37TT) |
+| API ↔ contract two-phase on-chain wiring & recovery (`settle:recover`) | Built, tested with mock & Soroban RPC adapters |
 
 Stakes are **zero** in the current build. The money-free version ships first:
 it proves whether people actually walk more when their friends are watching,
