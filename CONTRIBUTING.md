@@ -41,3 +41,13 @@ Thank you for your interest in contributing to `steppal-core`. This repository c
    cd contracts && cargo test
    ```
 4. Use clear, conventional commit messages (`feat(api): ...`, `fix(sdk): ...`, `test(oracle): ...`, `docs: ...`).
+
+## Continuous Integration
+
+Every pull request runs three jobs (`.github/workflows/ci.yml`):
+
+- **build** — lint, typecheck, migrations, and the full test suite against Postgres 16.
+- **unit tests** — `pnpm test:unit` on Node 20 and 22 with no database.
+- **contracts** — `cargo test` for `contracts/goal-escrow` on stable Rust.
+
+Run `pnpm test:unit` and `pnpm test:contracts` locally to reproduce the last two.
