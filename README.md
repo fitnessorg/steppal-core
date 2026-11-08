@@ -14,17 +14,17 @@ itself lives in [steppal-mobile](https://github.com/fitnessorg/steppal-mobile).
 
 ## What works today
 
-| | Status |
+| Component | Status |
 | --- | --- |
-| Phone OTP auth, rotating refresh tokens | Built, 13 tests |
-| Pots — create, join by code, standings, leave | Built, 7 tests |
+| Phone OTP auth, rotating refresh tokens, Termii & console SMS, OTP pruning | Built, 25 tests |
+| Pots — create, join by code, cursor pagination, standings, leave | Built, 11 tests |
 | Step ingestion with server-side validation | Built, 6 tests |
-| Settlement engine | Built, 7 tests |
-| `@steppal/sdk` typed client | Built, 10 tests |
-| `goal-escrow` Soroban contract | Built, 12 tests, [deployed to testnet](https://stellar.expert/explorer/testnet/contract/CCEMDKD4POJ4H2EF3JSY73W33OVB34X7KWV7UM6VRESTPNTHJ4OG37TT) |
-| Payments (deposit / withdrawal) | Interface only — mock provider |
-| Oracle service (signed attestations) | Not started |
-| API ↔ contract wiring | Not started |
+| Settlement engine & two-phase crash-resilient coordinator | Built, 24 tests |
+| Payments — Paystack & mock provider, NUBAN validation, HMAC webhooks | Built, 21 tests |
+| `@steppal/oracle` — anti-cheat heuristics, Soroban signer, silent fallback | Built, 21 tests |
+| `@steppal/sdk` — typed client, auto-refresh, offline step queue, payments | Built, 21 tests |
+| `goal-escrow` Soroban contract (typed events, storage TTL archival) | Built, 16 tests, [deployed to testnet](https://stellar.expert/explorer/testnet/contract/CCEMDKD4POJ4H2EF3JSY73W33OVB34X7KWV7UM6VRESTPNTHJ4OG37TT) |
+| API ↔ contract two-phase on-chain wiring & recovery (`settle:recover`) | Built, tested with mock & Soroban RPC adapters |
 
 Stakes are **zero** in the current build. The money-free version ships first:
 it proves whether people actually walk more when their friends are watching,
@@ -38,14 +38,18 @@ change, not a migration.
 steppal-core/
 ├── packages/
 │   ├── api/            Fastify, Postgres via Drizzle, Zod-validated routes
-│   │   ├── src/lib/    Pure rules — dates, phone, steps, settlement, invites
-│   │   ├── src/routes/ HTTP surface
-│   │   └── src/jobs/   settle.ts, for a daily scheduler
-│   └── sdk/            @steppal/sdk — typed client, auto-refresh, no deps
+│   │   ├── src/lib/    Pure rules — dates, phone, steps, payments, escrow, settlement
+│   │   ├── src/routes/ HTTP surface (/v1/auth, /v1/pots, /v1/steps, /v1/payments)
+│   │   └── src/jobs/   settle.ts, recover-settlements.ts, prune-otp.ts
+│   ├── oracle/         @steppal/oracle — anti-cheat evaluation & Soroban attestation signer
+│   └── sdk/            @steppal/sdk — typed client, auto-refresh, offline queue, no deps
 ├── contracts/
 │   └── goal-escrow/    Rust / Soroban. Sponsored goals, tips and pots are one
 │                       contract, because on chain they are the same shape.
-└── docs/API.md         Endpoint reference and the reasoning behind each rule
+└── docs/
+    ├── API.md          Endpoint reference and the reasoning behind each rule
+    ├── anti-cheat.md   Multi-layer threat model, oracle heuristics & residual risks
+    └── local-setup.md  Zero-Stellar, zero-account setup guide and dependency matrix
 ```
 
 The seam that matters is `@steppal/sdk`. It is why the mobile app can live in
@@ -54,7 +58,9 @@ touch the same file.
 
 ## Run it locally
 
-Node 20+ and pnpm. Postgres from Docker, or any hosted one.
+Node 20+ and pnpm. Postgres from Docker, or any hosted one. No Stellar account,
+Termii account, or Paystack account is needed — see
+[docs/local-setup.md](./docs/local-setup.md) for the full zero-account guide.
 
 ```bash
 git clone https://github.com/fitnessorg/steppal-core
@@ -89,14 +95,14 @@ Needs Rust and the [Stellar CLI](https://developers.stellar.org/docs/build/smart
 
 ```bash
 rustup target add wasm32v1-none
-cd contracts && cargo test              # 12 tests, no network
+cd contracts && cargo test              # 16 tests, no network
 bash scripts/deploy-testnet.sh          # needs a funded testnet identity
 ```
 
 ## Tests
 
 ```bash
-pnpm test        # 43 tests across api and sdk
+pnpm test        # 125 tests across api, oracle, and sdk (plus 16 in contracts)
 pnpm lint
 pnpm typecheck
 ```

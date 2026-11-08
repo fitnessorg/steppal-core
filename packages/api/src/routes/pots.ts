@@ -10,6 +10,7 @@ import { progressFor } from "../lib/pots.js";
 
 const MAX_MEMBERS = 20;
 
+// TODO(contributor): Expose live pot standings over WebSockets so members see step updates without polling GET /v1/pots/:id.
 const potSummary = z.object({
   id: z.string(),
   name: z.string(),

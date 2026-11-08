@@ -12,38 +12,28 @@ the body) so work does not collide.
 
 ## Good first issues
 
-### Implement the Termii SMS provider
+### Implement the Termii SMS provider [COMPLETED - Day 1]
 **File:** `packages/api/src/lib/sms.ts` · **Difficulty:** medium
 
-The console provider logs codes instead of sending them, which is what keeps
-the repo runnable with no accounts. Add the real one: POST to Termii's
-`/api/sms/send`, map a non-2xx to a thrown error, and add `TERMII_API_KEY` and
-`TERMII_SENDER_ID` to `lib/env.ts`.
+Implemented `createSmsProvider()` supporting both `SMS_PROVIDER=console` (default)
+and `SMS_PROVIDER=termii` (POSTing to Termii's `/api/sms/send` with
+`TERMII_API_KEY` and `TERMII_SENDER_ID`). Covered by unit tests in
+`packages/api/test/sms.test.ts`.
 
-Keep the interface, and keep console as the default — a contributor must never
-need an SMS account to run the tests.
+### Expire consumed and stale OTP rows [COMPLETED - Day 1]
+**File:** `packages/api/src/lib/otp.ts`, `packages/api/src/jobs/prune-otp.ts` · **Difficulty:** easy
 
-**Done when:** `SMS_PROVIDER=termii` delivers a real code, and the suite still
-passes with no Termii credentials present.
+Implemented `pruneStaleOtpCodes` and standalone scheduled job `pnpm prune:otp`
+deleting `otp_codes` rows older than 30 days while retaining recent rows for
+audit visibility. Covered by `packages/api/test/otp.test.ts`.
 
-### Expire consumed and stale OTP rows
-**File:** `packages/api/src/routes/auth.ts` · **Difficulty:** easy
+### Paginate the pot list [COMPLETED - Day 2]
+**File:** `packages/api/src/routes/pots.ts`, `packages/sdk/src/index.ts` · **Difficulty:** easy
 
-`otp_codes` grows forever. Rows are kept after use on purpose — a burst of
-requests to one number should be visible — but not indefinitely. Add a job (or
-extend `src/jobs/`) that deletes rows older than 30 days.
-
-**Done when:** a scheduled task prunes them, and a test proves a recent row
-survives while an old one does not.
-
-### Paginate the pot list
-**File:** `packages/api/src/routes/pots.ts` · **Difficulty:** easy
-
-`GET /v1/pots` returns everything. Fine at ten pots, not at two hundred. Add
-cursor pagination on `created_at`, and the matching parameter to the SDK.
-
-**Done when:** the endpoint accepts `limit` and `cursor`, and the SDK exposes
-them without breaking existing callers.
+Added cursor pagination (`limit` 1..100, `cursor` ISO timestamp on `created_at`)
+to `GET /v1/pots` and `listPots(params?)` in `@steppal/sdk` without breaking
+existing callers. Covered by `packages/api/test/pots-pagination.test.ts` and
+`packages/sdk/test/client.test.ts`.
 
 ---
 
@@ -103,15 +93,13 @@ runtime.
 **Done when:** `pnpm --filter @steppal/sdk build` regenerates types from the
 API's schema and a deliberate route change fails typecheck.
 
-### Offline queue for step submissions
+### Offline queue for step submissions [COMPLETED - Day 2]
 **File:** `packages/sdk/src/index.ts` · **Difficulty:** medium
 
-`submitSteps` throws when the network is down, and the steps are lost. Queue
-them and flush on reconnect. The endpoint is already idempotent on
-`(user, day)`, so replaying a queue is safe by construction.
-
-**Done when:** steps submitted offline arrive after reconnection, and a
-duplicate flush changes nothing.
+Implemented client-side offline step queue (`getStepQueue`, `queueSteps`,
+`clearStepQueue`, `flushStepQueue`, `flushSteps`) with automatic queuing on
+network connectivity failure, day-based deduplication, and idempotent replay on
+reconnection. Covered by `packages/sdk/test/client.test.ts`.
 
 ---
 
@@ -120,34 +108,36 @@ duplicate flush changes nothing.
 ### Integration tests against the deployed contract
 **File:** `contracts/goal-escrow/` · **Difficulty:** medium
 
-The 12 tests run in Soroban's test environment. None exercise the deployed
-contract from TypeScript, which is the path the API will actually use.
+The 16 tests run in Soroban's test environment, and `SorobanEscrowAdapter` /
+`SorobanRpcSigner` are tested against mocked Soroban JSON-RPC responses. An
+optional live-testnet script or CI job can be added to fund, attest, and claim
+against a live Stellar Testnet deployment.
 
 **Done when:** a test suite funds, attests and claims against testnet.
 
-### Extend coverage for storage archival
+### Extend coverage for storage archival [COMPLETED - Day 3]
 **File:** `contracts/goal-escrow/src/test.rs` · **Difficulty:** hard
 
-`bump()` extends storage TTL on every write because Soroban archives untouched
-storage. No test proves a goal left alone for a long window is still claimable.
-
-**Done when:** a test advances the ledger past the TTL and shows the goal
-survives.
+Added `storage_ttl_extended_on_write` advancing the ledger sequence across a
+65-day window and proving `Persistent` and `Instance` storage TTLs survive and
+re-extend to 90 days on contract write, alongside exact boundary tests for
+funding deadlines, unattested refunds, and challenge windows.
 
 ---
 
 ## Documentation
 
-### A setup guide that needs no Stellar account
-**File:** `docs/` · **Difficulty:** easy
+### A setup guide that needs no Stellar account [COMPLETED - Day 7]
+**File:** `docs/local-setup.md` · **Difficulty:** easy
 
-The API runs with no chain access at all. Say so explicitly and show which
-parts need what, so a contributor does not install the Stellar toolchain to fix
-a route.
+Authored `docs/local-setup.md` detailing the component dependency matrix, zero-account
+mock providers (`SMS_PROVIDER=console`, `PAYMENT_PROVIDER=mock`, `ESCROW_PROVIDER=mock`),
+and how to run unit tests without PostgreSQL or Stellar CLI.
 
-### Document the anti-cheat model
-**File:** `docs/` · **Difficulty:** medium
+### Document the anti-cheat model [COMPLETED - Day 5 & Day 7]
+**File:** `docs/anti-cheat.md` · **Difficulty:** medium
 
-Rules are spread across `lib/steps.ts`, the contract's challenge window and the
-unwritten oracle. Collect them, and be honest about what is not defended yet.
-A threat model that only lists wins is not a threat model.
+Authored `docs/anti-cheat.md` covering Layer 1 ingest sanitization, Layer 2
+`@steppal/oracle` heuristics, Soroban challenge/refund fallback invariants, an
+attack vector mitigation matrix, and an honest breakdown of residual risks and
+hardware attestation roadmap items.

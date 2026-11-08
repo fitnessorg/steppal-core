@@ -205,6 +205,14 @@ risking orphaned payouts or double-attestation on process crash:
 Any interrupted settlement left in `intent_recorded` or `chain_attested` can be
 resumed via `pnpm settle:recover` (`src/jobs/recover-settlements.ts`).
 
+### Background Jobs
+
+| Command | Script | Purpose |
+| --- | --- | --- |
+| `pnpm settle` | `src/jobs/settle.ts` | Settle all pots whose window ended before today |
+| `pnpm settle:recover` | `src/jobs/recover-settlements.ts` | Reconcile and finalize any interrupted two-phase settlements |
+| `pnpm prune:otp` | `src/jobs/prune-otp.ts` | Prune consumed and expired `otp_codes` rows older than 30 days |
+
 ## Errors
 
 ```json
@@ -216,7 +224,15 @@ Stable machine-readable codes, not prose. The SDK surfaces them as
 
 ## Environment
 
-See `.env.example`. `SMS_PROVIDER=console` logs codes instead of sending them,
-which is what makes the whole auth flow testable with no account anywhere.
-`PAYMENT_PROVIDER=mock` is the default zero-network provider; `PAYMENT_PROVIDER=paystack`
-connects to the live or sandbox Paystack API for collection and NUBAN disbursements.
+See `.env.example` and [docs/local-setup.md](./local-setup.md). Every external
+integration is controlled by a provider flag that defaults to a local mock:
+
+- **`SMS_PROVIDER=console`** (default) or **`termii`** — `console` logs OTP
+  codes to stdout so auth works with no SMS account; `termii` dispatches via
+  Termii's `/api/sms/send` endpoint using `TERMII_API_KEY` and `TERMII_SENDER_ID`.
+- **`PAYMENT_PROVIDER=mock`** (default) or **`paystack`** — `mock` runs an
+  in-memory checkout and disbursement simulator; `paystack` connects to Paystack
+  for collection, HMAC-SHA512 webhooks, and NUBAN bank transfers.
+- **`ESCROW_PROVIDER=mock`** (default) or **`soroban`** — `mock` runs an
+  in-memory `goal-escrow` contract state machine; `soroban` submits signed
+  transactions to `SOROBAN_RPC_URL` targeting `GOAL_ESCROW_CONTRACT_ID`.
