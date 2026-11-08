@@ -17,6 +17,7 @@
     "db:generate": "pnpm --filter @steppal/api db:generate",
     "db:seed": "pnpm --filter @steppal/api db:seed",
     "settle": "pnpm --filter @steppal/api settle",
+    "settle:recover": "pnpm --filter @steppal/api settle:recover",
     "prune:otp": "pnpm --filter @steppal/api prune:otp"
   },
   "devDependencies": {
