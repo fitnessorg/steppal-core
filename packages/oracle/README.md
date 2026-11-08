@@ -6,9 +6,9 @@ Off-chain attestation evaluation service and Soroban transaction signer for the 
 
 1. **Multi-Day Anti-Cheat Heuristics (`src/anti-cheat.ts`)**:
    - `checkPhysicalBoundaries`: Rejects daily step claims exceeding human physiological limits (50,000 steps/day) and flags clamped days (`DAILY_CAP_EXCEEDED`).
-   - `checkCrossDayVelocity`: Detects abrupt multi-day spikes (`>4x` baseline and `>15,000` steps) and superhuman submission cadences (`>4.5` steps/sec).
-   - `checkDeviceConsistency`: Flags sensor source downgrades (`mock` mixed with physical hardware sensors) and device hopping (`>2` device IDs in one window).
-   - `checkStepUniformity`: Detects synthetic bot submissions repeating zero-variance step counts across 4+ days.
+   - `checkCrossDayVelocity`: Detects abrupt day-over-day spikes (more than 6x, to at least 10,000 steps) and superhuman submission cadences (`>4.5` steps/sec).
+   - `checkDeviceConsistency`: Flags `mock` sources mixed with physical sensors and device hash proliferation (more than 3 hashes within 7 days).
+   - `checkStepUniformity`: Detects synthetic submissions repeating one identical count across 4+ days.
 2. **Soroban Attestation Signing (`src/signer.ts`)**:
    - `MockSorobanSigner`: Deterministic in-memory signer for local development and tests.
    - `SorobanRpcSigner`: Submits signed `attest(id, steps)` transactions to Soroban RPC (`sendTransaction`).

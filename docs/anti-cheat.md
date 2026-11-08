@@ -47,10 +47,10 @@ Operates on the complete multi-day history before settlement:
 | **Late Backfill Injection** | User waits until final hour of pot to submit fabricated steps for day 1 | Layer 1 (`src/lib/steps.ts`) | `too_old` rule rejects any date more than 8 calendar days prior to `today`. |
 | **Mechanical Phone Shaking / Glitch** | User puts phone in a mechanical cradle or encounters pedometer bounce | Layer 1 & Layer 2 | Ingest clamps `steps` at `DAILY_STEP_CAP` (25,000) while recording original `raw_steps`. Oracle rejects raw bursts > 50,000 (`IMPLAUSIBLE_STEP_BURST`). |
 | **Packet Replay / Retry Inflation** | Client replays `POST /v1/steps` payload to multiply daily count | Layer 1 (`step_days` schema) | Composite primary key `(user_id, day)` makes writes idempotent updates (`ON CONFLICT DO UPDATE`), never additive increments. |
-| **Last-Minute Scripted Top-Up** | Participant walks 500 steps/day for 5 days, then scripts 15,000 steps on final days | Layer 2 (`anti-cheat.ts`) | `checkCrossDayVelocity` flags `VELOCITY_SPIKE` when a single day exceeds >4x multi-day baseline and >15,000 steps. |
+| **Last-Minute Scripted Top-Up** | Participant walks 500 steps/day for 5 days, then scripts 15,000 steps on final days | Layer 2 (`anti-cheat.ts`) | `checkCrossDayVelocity` flags `VELOCITY_SPIKE` when consecutive days rise by more than 6x (`MAX_VELOCITY_SPIKE_RATIO`) from a base of at least 500 steps to at least 10,000 steps. |
 | **High-Frequency Cadence Injection** | Automated script submits rapid step increments faster than human locomotion | Layer 2 (`anti-cheat.ts`) | `checkCrossDayVelocity` computes delta steps over elapsed seconds between syncs, flagging > 4.5 steps/sec (`VELOCITY_SPIKE`). |
-| **Emulator / Sensor Source Switching** | Attacker uses a simulator (`mock` source) on days they fail to walk | Layer 2 (`anti-cheat.ts`) | `checkDeviceConsistency` flags `SOURCE_DOWNGRADE` when `mock` appears alongside hardware sources (`healthkit`, `health_connect`, `pedometer`) and `DEVICE_HOPPING` when >2 device IDs appear in one window. |
-| **Deterministic Cron Bot** | Script posts `10,000` steps every day at midnight | Layer 2 (`anti-cheat.ts`) | `checkStepUniformity` computes variance across >=4 non-zero days, flagging `SYNTHETIC_UNIFORMITY` on zero variance. |
+| **Emulator / Sensor Source Switching** | Attacker uses a simulator (`mock` source) on days they fail to walk | Layer 2 (`anti-cheat.ts`) | `checkDeviceConsistency` flags `DEVICE_INCONSISTENCY` and `SOURCE_MISMATCH` when `mock` appears alongside hardware sources (`health_connect`, `pedometer`) or when more than 3 distinct device hashes appear across a window of 7 days or fewer. |
+| **Deterministic Cron Bot** | Script posts `10,000` steps every day at midnight | Layer 2 (`anti-cheat.ts`) | `checkStepUniformity` flags `UNNATURAL_UNIFORMITY` when 4 or more days report one identical non-zero count. |
 
 ---
 
@@ -67,7 +67,7 @@ Operates on the complete multi-day history before settlement:
 A threat model that only lists wins is not a threat model. The following vectors remain partially or fully open in the current version and are bounded socially by small friend-group pot sizes (`MAX_POT_MEMBERS = 20`) rather than cryptographically:
 
 1. **Unauthenticated HTTP Payloads from Modified Clients**:
-   `POST /v1/steps` validates the user's JWT (`Authorization: Bearer <token>`), not hardware-backed device integrity. A user who extracts their bearer token can `curl` plausible daily step counts (e.g. `10,240`, `11,105`, `10,890`) with `"source": "healthkit"` and natural-looking variance, bypassing Layer 1 and Layer 2 heuristics.
+   `POST /v1/steps` validates the user's JWT (`Authorization: Bearer <token>`), not hardware-backed device integrity. A user who extracts their bearer token can `curl` plausible daily step counts (e.g. `10,240`, `11,105`, `10,890`) with `"source": "health_connect"` and natural-looking variance, bypassing Layer 1 and Layer 2 heuristics.
 2. **Low-Frequency Mechanical Pendulums ("Phone Swings")**:
    A physical pendulum swinging a real phone at ~1.8 steps/sec for two hours generates ~13,000 hardware-sensor steps that HealthKit and Health Connect record as genuine accelerometer locomotion. Without GPS stride-length correlation or heart-rate co-signals, accelerometer-only step counts cannot distinguish a pendulum from a treadmill walk.
 3. **Collusion / Unpunished Dispute Griefing**:
