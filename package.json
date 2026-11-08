@@ -13,6 +13,8 @@
     "format": "prettier --write .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "test:unit": "pnpm --filter @steppal/api test:unit && pnpm --filter @steppal/oracle test && pnpm --filter @steppal/sdk test",
+    "test:contracts": "cargo test --manifest-path contracts/Cargo.toml",
     "db:migrate": "pnpm --filter @steppal/api db:migrate",
     "db:generate": "pnpm --filter @steppal/api db:generate",
     "db:seed": "pnpm --filter @steppal/api db:seed",

@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -53,3 +60,43 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  unit-tests:
+    name: unit tests (node ${{ matrix.node }}, no database)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests without PostgreSQL
+        run: pnpm test:unit
+
+  contracts:
+    name: contracts (rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+
+      - name: Contract tests
+        run: cargo test --manifest-path contracts/Cargo.toml

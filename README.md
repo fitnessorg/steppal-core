@@ -102,7 +102,9 @@ bash scripts/deploy-testnet.sh          # needs a funded testnet identity
 ## Tests
 
 ```bash
-pnpm test        # 125 tests across api, oracle, and sdk (plus 16 in contracts)
+pnpm test          # everything; API integration suites need Postgres
+pnpm test:unit     # api unit suites, oracle and sdk — no database needed
+pnpm test:contracts # 16 Soroban contract tests, no network
 pnpm lint
 pnpm typecheck
 ```
