@@ -56,6 +56,27 @@ Operates on the complete multi-day history before settlement:
 
 ## Smart Contract Interaction & Fallback Invariants
 
-- **`attest(id, steps)`**: Signed by the oracle using `MockSorobanSigner` or `SorobanRpcSigner`, opening the 24-hour challenge window.
-- **`dispute(id, challenger)`**: Anyone may dispute during the challenge window, moving the escrow to `Refunding`.
-- **Silent Oracle Fallback**: If the oracle refuses to attest due to critical anti-cheat violations, it remains silent. Once `env.ledger().timestamp() >= goal.deadline`, any funder can call `refund(id, funder)` to retrieve their funds.
+- **`attest(id, steps)`**: Signed by the oracle using `MockSorobanSigner` or `SorobanRpcSigner`, opening the 24-hour challenge window (`CHALLENGE_WINDOW = 86_400` seconds).
+- **`dispute(id, challenger)`**: Any funder (or the goal holder) may dispute an attestation inside the 24-hour challenge window (`env.ledger().timestamp() < challenge_ends`). A dispute transitions the goal state to `Refunding`, allowing every funder to recover their exact stake via `refund(id, funder)`.
+- **Silent Oracle Fallback**: If the oracle refuses to attest due to critical anti-cheat violations (`shouldStaySilent: true`), or if the oracle key/service is offline, it remains silent. Once `env.ledger().timestamp() >= goal.deadline`, any funder can call `refund(id, funder)` permissionlessly without waiting for an admin or oracle signature.
+
+---
+
+## Honest Limitations: What Is Not Defended Yet
+
+A threat model that only lists wins is not a threat model. The following vectors remain partially or fully open in the current version and are bounded socially by small friend-group pot sizes (`MAX_POT_MEMBERS = 20`) rather than cryptographically:
+
+1. **Unauthenticated HTTP Payloads from Modified Clients**:
+   `POST /v1/steps` validates the user's JWT (`Authorization: Bearer <token>`), not hardware-backed device integrity. A user who extracts their bearer token can `curl` plausible daily step counts (e.g. `10,240`, `11,105`, `10,890`) with `"source": "healthkit"` and natural-looking variance, bypassing Layer 1 and Layer 2 heuristics.
+2. **Low-Frequency Mechanical Pendulums ("Phone Swings")**:
+   A physical pendulum swinging a real phone at ~1.8 steps/sec for two hours generates ~13,000 hardware-sensor steps that HealthKit and Health Connect record as genuine accelerometer locomotion. Without GPS stride-length correlation or heart-rate co-signals, accelerometer-only step counts cannot distinguish a pendulum from a treadmill walk.
+3. **Collusion / Unpunished Dispute Griefing**:
+   In `goal-escrow`, any funder can call `dispute(id, challenger)` during the 24-hour challenge window to force `Refunding`. While this protects honest funders against a compromised oracle, a losing participant in a peer-to-peer pot who is also listed as a funder could grief the pot by disputing a valid attestation to recover their stake.
+4. **Single Oracle Key Centralization**:
+   `goal.oracle` is currently a single Soroban `Address`. If the oracle private key is compromised, an attacker could attest false step totals (subject to the 24-hour challenge window).
+
+### Planned Hardening Roadmap
+
+- **Play Integrity API & Apple App Attest**: Bind `POST /v1/steps` submissions to hardware-backed attestation tokens so only an unmodified StepPal mobile binary running on a genuine physical device can submit `healthkit` or `health_connect` claims.
+- **Sub-Daily Telemetry & Stride Entropy**: Extend ingestion from daily summaries to hourly histogram buckets, making scripted daily numbers much harder to synthesize convincingly.
+- **Optimistic Bonded Disputes**: Require a small dispute bond or multi-funder threshold before `dispute()` cancels a valid attestation in multi-member pots.
