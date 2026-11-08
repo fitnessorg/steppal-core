@@ -38,14 +38,18 @@ change, not a migration.
 steppal-core/
 ├── packages/
 │   ├── api/            Fastify, Postgres via Drizzle, Zod-validated routes
-│   │   ├── src/lib/    Pure rules — dates, phone, steps, settlement, invites
-│   │   ├── src/routes/ HTTP surface
-│   │   └── src/jobs/   settle.ts, for a daily scheduler
-│   └── sdk/            @steppal/sdk — typed client, auto-refresh, no deps
+│   │   ├── src/lib/    Pure rules — dates, phone, steps, payments, escrow, settlement
+│   │   ├── src/routes/ HTTP surface (/v1/auth, /v1/pots, /v1/steps, /v1/payments)
+│   │   └── src/jobs/   settle.ts, recover-settlements.ts, prune-otp.ts
+│   ├── oracle/         @steppal/oracle — anti-cheat evaluation & Soroban attestation signer
+│   └── sdk/            @steppal/sdk — typed client, auto-refresh, offline queue, no deps
 ├── contracts/
 │   └── goal-escrow/    Rust / Soroban. Sponsored goals, tips and pots are one
 │                       contract, because on chain they are the same shape.
-└── docs/API.md         Endpoint reference and the reasoning behind each rule
+└── docs/
+    ├── API.md          Endpoint reference and the reasoning behind each rule
+    ├── anti-cheat.md   Multi-layer threat model, oracle heuristics & residual risks
+    └── local-setup.md  Zero-Stellar, zero-account setup guide and dependency matrix
 ```
 
 The seam that matters is `@steppal/sdk`. It is why the mobile app can live in
@@ -54,7 +58,9 @@ touch the same file.
 
 ## Run it locally
 
-Node 20+ and pnpm. Postgres from Docker, or any hosted one.
+Node 20+ and pnpm. Postgres from Docker, or any hosted one. No Stellar account,
+Termii account, or Paystack account is needed — see
+[docs/local-setup.md](./docs/local-setup.md) for the full zero-account guide.
 
 ```bash
 git clone https://github.com/fitnessorg/steppal-core
@@ -89,14 +95,14 @@ Needs Rust and the [Stellar CLI](https://developers.stellar.org/docs/build/smart
 
 ```bash
 rustup target add wasm32v1-none
-cd contracts && cargo test              # 12 tests, no network
+cd contracts && cargo test              # 16 tests, no network
 bash scripts/deploy-testnet.sh          # needs a funded testnet identity
 ```
 
 ## Tests
 
 ```bash
-pnpm test        # 43 tests across api and sdk
+pnpm test        # 125 tests across api, oracle, and sdk (plus 16 in contracts)
 pnpm lint
 pnpm typecheck
 ```
