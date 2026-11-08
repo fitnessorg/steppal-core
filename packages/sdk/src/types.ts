@@ -9,6 +9,8 @@
  * Keep them in step with packages/api/src/routes. The contract tests in
  * test/client.test.ts pin the paths and methods, not the field names, so a
  * rename here that the API did not make will surface in the app, not in CI.
+ *
+ * TODO(contributor): Emit an OpenAPI document from the API's Zod route schemas and generate these wire types at build time while keeping the client runtime hand-written.
  */
 
 export type User = {
