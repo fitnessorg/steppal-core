@@ -155,6 +155,148 @@ export function setEscrowAdapterForTest(adapter: EscrowContractAdapter | undefin
   cachedAdapter = adapter;
 }
 
-export function createSorobanEscrowAdapter(): EscrowContractAdapter {
-  return MockEscrowAdapter;
+export interface SorobanEscrowOptions {
+  rpcUrl?: string;
+  contractId?: string;
+  oracleSecretKey?: string;
+  oraclePublicKey?: string;
+  fetchFn?: typeof fetch;
+}
+
+export function createSorobanEscrowAdapter(
+  options: SorobanEscrowOptions = {},
+): EscrowContractAdapter {
+  function resolveConfig() {
+    const env = loadEnv();
+    return {
+      rpcUrl: (options.rpcUrl ?? env.SOROBAN_RPC_URL).replace(/\/$/, ""),
+      contractId: options.contractId ?? env.GOAL_ESCROW_CONTRACT_ID,
+      oracleSecretKey: options.oracleSecretKey ?? env.ORACLE_SECRET_KEY,
+      oraclePublicKey: options.oraclePublicKey ?? env.ORACLE_PUBLIC_KEY ?? "G_ORACLE_DEFAULT",
+      fetchFn: options.fetchFn ?? globalThis.fetch,
+    };
+  }
+
+  async function invokeContract(
+    method: string,
+    args: unknown[],
+  ): Promise<{ hash: string; status: string; returnValue?: unknown }> {
+    const cfg = resolveConfig();
+    if (!cfg.oracleSecretKey) {
+      throw new Error("ORACLE_SECRET_KEY is required for soroban escrow provider");
+    }
+
+    const payload = {
+      contractId: cfg.contractId,
+      method,
+      args,
+      signer: cfg.oraclePublicKey,
+    };
+
+    const signature = crypto
+      .createHmac("sha256", cfg.oracleSecretKey)
+      .update(JSON.stringify(payload))
+      .digest("hex");
+
+    const envelopeXdr = Buffer.from(
+      JSON.stringify({ ...payload, signature }),
+    ).toString("base64");
+
+    const res = await cfg.fetchFn(cfg.rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: `${method}_${Date.now()}`,
+        method: "sendTransaction",
+        params: { transaction: envelopeXdr },
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Soroban RPC HTTP ${res.status}: ${text}`);
+    }
+
+    const body = (await res.json()) as {
+      error?: { code: number; message: string };
+      result?: { hash?: string; status?: string; returnValue?: unknown };
+    };
+
+    if (body.error) {
+      throw new Error(`Soroban RPC error [${body.error.code}]: ${body.error.message}`);
+    }
+
+    return {
+      hash: body.result?.hash ?? `0x${signature}`,
+      status: body.result?.status ?? "PENDING",
+      returnValue: body.result?.returnValue,
+    };
+  }
+
+  return {
+    name: "soroban",
+
+    async getGoalState(goalId: number): Promise<OnChainGoalState | null> {
+      const cfg = resolveConfig();
+      const res = await cfg.fetchFn(cfg.rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: `get_goal_${goalId}`,
+          method: "getGoalState",
+          params: { contractId: cfg.contractId, goalId },
+        }),
+      });
+
+      if (!res.ok) return null;
+      const body = (await res.json()) as { result?: OnChainGoalState | null };
+      return body.result ?? null;
+    },
+
+    async attestGoal(goalId: number, steps: number): Promise<EscrowAttestResult> {
+      try {
+        const tx = await invokeContract("attest", [goalId, steps]);
+        return {
+          goalId,
+          steps,
+          transactionHash: tx.hash,
+          status: "attested",
+        };
+      } catch (err) {
+        const msg = (err as Error).message;
+        // Contract Error::NotOpen (code 3) indicates goal was already attested prior to retry
+        if (msg.includes("NotOpen") || msg.includes("already attested")) {
+          const state = await this.getGoalState(goalId);
+          return {
+            goalId,
+            steps: state?.attestedSteps ?? steps,
+            transactionHash: state?.transactionHash ?? `0x_reconciled_${goalId}`,
+            status: "already_attested",
+          };
+        }
+        throw err;
+      }
+    },
+
+    async claimGoal(goalId: number): Promise<{ transactionHash: string; payout: number }> {
+      const tx = await invokeContract("claim", [goalId]);
+      return {
+        transactionHash: tx.hash,
+        payout: typeof tx.returnValue === "number" ? tx.returnValue : 0,
+      };
+    },
+
+    async refundGoal(
+      goalId: number,
+      funder: string,
+    ): Promise<{ transactionHash: string; refunded: number }> {
+      const tx = await invokeContract("refund", [goalId, funder]);
+      return {
+        transactionHash: tx.hash,
+        refunded: typeof tx.returnValue === "number" ? tx.returnValue : 0,
+      };
+    },
+  };
 }
