@@ -3,13 +3,73 @@ import { db } from "../db/client.js";
 import { potResults, pots } from "../db/schema.js";
 import { progressFor } from "./pots.js";
 import { todayKey } from "./dates.js";
+import { executeTwoPhaseSettlement } from "./settlement-coordinator.js";
 
 export type Settlement = {
   potId: string;
   winners: string[];
   losers: string[];
   payouts: { userId: string; payoutKobo: number }[];
+  transactionHash?: string;
 };
+
+export interface MemberSettlementStanding {
+  userId: string;
+  daysHit: number;
+  totalSteps: number;
+}
+
+export interface ComputedSettlement {
+  winners: string[];
+  losers: string[];
+  payouts: { userId: string; payoutKobo: number }[];
+  refundAll: boolean;
+  totalVerifiedSteps: number;
+}
+
+/**
+ * Pure deterministic calculation of pot settlement outcomes, forfeited stake splits,
+ * and integer kobo remainder allocation.
+ */
+export function computeSettlementPayouts(input: {
+  stakeKobo: number;
+  daysPossible: number;
+  members: MemberSettlementStanding[];
+}): ComputedSettlement {
+  const { stakeKobo, daysPossible, members } = input;
+
+  // Sort winners by totalSteps descending so the top walker receives any integer remainder
+  const winners = members
+    .filter((m) => m.daysHit === daysPossible)
+    .sort((a, b) => b.totalSteps - a.totalSteps);
+  const losers = members.filter((m) => m.daysHit < daysPossible);
+
+  const forfeited = losers.length * stakeKobo;
+  const share = winners.length > 0 ? Math.floor(forfeited / winners.length) : 0;
+  const remainder = winners.length > 0 ? forfeited - share * winners.length : 0;
+
+  const refundAll = winners.length === 0;
+
+  const payouts = members.map((m) => {
+    if (refundAll) {
+      return { userId: m.userId, payoutKobo: stakeKobo };
+    }
+    const won = m.daysHit === daysPossible;
+    if (!won) return { userId: m.userId, payoutKobo: 0 };
+    const isTop = winners[0]?.userId === m.userId;
+    return { userId: m.userId, payoutKobo: stakeKobo + share + (isTop ? remainder : 0) };
+  });
+
+  const totalVerifiedSteps = winners.reduce((acc, w) => acc + w.totalSteps, 0);
+
+  return {
+    winners: winners.map((w) => w.userId),
+    losers: losers.map((l) => l.userId),
+    payouts,
+    refundAll,
+    totalVerifiedSteps,
+  };
+}
 
 /**
  * Settle one pot.
@@ -51,55 +111,50 @@ export async function settlePot(potId: string): Promise<Settlement | null> {
   if (members.length === 0) return null;
 
   const daysPossible = window.length;
-  const winners = members.filter((m) => m.daysHit === daysPossible);
-  const losers = members.filter((m) => m.daysHit < daysPossible);
+  const entry = await executeTwoPhaseSettlement({
+    potId: pot.id,
+    stakeKobo: pot.stakeKobo,
+    daysPossible,
+    members: members.map((m) => ({
+      userId: m.userId,
+      daysHit: m.daysHit,
+      totalSteps: m.totalSteps,
+    })),
+    finalizePersistence: async (journalEntry) => {
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(potResults)
+          .values(
+            journalEntry.members.map((m) => ({
+              potId: pot.id,
+              userId: m.userId,
+              daysHit: m.daysHit,
+              daysPossible: journalEntry.daysPossible,
+              totalSteps: m.totalSteps,
+              metGoal: (m.daysHit === journalEntry.daysPossible ? "yes" : "no") as
+                | "yes"
+                | "no",
+              payoutKobo:
+                journalEntry.computed.payouts.find((p) => p.userId === m.userId)
+                  ?.payoutKobo ?? 0,
+            })),
+          )
+          .onConflictDoNothing();
 
-  const forfeited = losers.length * pot.stakeKobo;
-
-  // Integer kobo only. The remainder from an uneven split goes to the member
-  // who walked the most, because it has to go somewhere and silently vanishing
-  // money is how a settlement loses trust.
-  const share = winners.length > 0 ? Math.floor(forfeited / winners.length) : 0;
-  const remainder = winners.length > 0 ? forfeited - share * winners.length : 0;
-
-  const payouts = members.map((m) => {
-    const won = m.daysHit === daysPossible;
-    if (!won) return { userId: m.userId, payoutKobo: 0 };
-    const isTop = winners[0]?.userId === m.userId;
-    return { userId: m.userId, payoutKobo: pot.stakeKobo + share + (isTop ? remainder : 0) };
-  });
-
-  // Nobody met the goal: everyone gets their own stake back.
-  const refundAll = winners.length === 0;
-
-  await db.transaction(async (tx) => {
-    await tx.insert(potResults).values(
-      members.map((m) => ({
-        potId: pot.id,
-        userId: m.userId,
-        daysHit: m.daysHit,
-        daysPossible,
-        totalSteps: m.totalSteps,
-        metGoal: (m.daysHit === daysPossible ? "yes" : "no") as "yes" | "no",
-        payoutKobo: refundAll
-          ? pot.stakeKobo
-          : (payouts.find((p) => p.userId === m.userId)?.payoutKobo ?? 0),
-      })),
-    );
-
-    await tx
-      .update(pots)
-      .set({ status: "settled", settledAt: new Date() })
-      .where(eq(pots.id, pot.id));
+        await tx
+          .update(pots)
+          .set({ status: "settled", settledAt: new Date() })
+          .where(eq(pots.id, pot.id));
+      });
+    },
   });
 
   return {
     potId: pot.id,
-    winners: winners.map((w) => w.userId),
-    losers: losers.map((l) => l.userId),
-    payouts: refundAll
-      ? members.map((m) => ({ userId: m.userId, payoutKobo: pot.stakeKobo }))
-      : payouts,
+    winners: entry.computed.winners,
+    losers: entry.computed.losers,
+    payouts: entry.computed.payouts,
+    transactionHash: entry.transactionHash,
   };
 }
 

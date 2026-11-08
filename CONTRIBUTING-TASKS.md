@@ -67,19 +67,14 @@ synthetic uniformity. Includes Soroban RPC transaction signer and mock signer fo
 `attest(id, steps)`, with guaranteed silent oracle timeout fallback. Documented in
 `docs/anti-cheat.md`.
 
-### Connect settlement to the contract
-**File:** `packages/api/src/lib/settlement.ts` · **Difficulty:** hard
+### Connect settlement to the contract [COMPLETED - Day 6]
+**File:** `packages/api/src/lib/settlement.ts`, `packages/api/src/lib/settlement-coordinator.ts`, `packages/api/src/lib/escrow.ts` · **Difficulty:** hard
 
-Settlement computes payouts and writes `pot_results`. It does not touch the
-chain. Once stakes are non-zero, `settlePot` should instruct `goal-escrow`
-rather than only recording an intention.
-
-The ordering is the whole problem: write the result first and the chain call
-may fail; call the chain first and the process may die before recording it.
-Make it recoverable either way.
-
-**Done when:** a staked pot settles on testnet, and killing the process
-mid-settlement leaves a state the next run can finish.
+Implemented two-phase crash-resilient settlement protocol (`intent_recorded` →
+`chain_attested` → `finalized`) connecting `settlePot` to the Soroban
+`goal-escrow` contract via `EscrowContractAdapter` (`MockEscrowAdapter` and
+`SorobanEscrowAdapter`). Includes idempotent on-chain state reconciliation and
+`pnpm settle:recover` job for interrupted settlements.
 
 ### Expose standings over websockets
 **File:** `packages/api/src/routes/pots.ts` · **Difficulty:** medium

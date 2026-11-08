@@ -12,8 +12,9 @@ async function main() {
     console.log("No pots were due.");
   } else {
     for (const s of settled) {
+      const txNote = s.transactionHash ? ` [tx: ${s.transactionHash}]` : "";
       console.log(
-        `Settled ${s.potId}: ${s.winners.length} met the goal, ${s.losers.length} did not.`,
+        `Settled ${s.potId}: ${s.winners.length} met the goal, ${s.losers.length} did not.${txNote}`,
       );
     }
   }

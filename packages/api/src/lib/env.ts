@@ -20,6 +20,14 @@ const envSchema = z.object({
   PAYSTACK_PUBLIC_KEY: z.string().optional(),
   PAYSTACK_BASE_URL: z.string().default("https://api.paystack.co"),
 
+  ESCROW_PROVIDER: z.enum(["mock", "soroban"]).default("mock"),
+  SOROBAN_RPC_URL: z.string().default("https://soroban-testnet.stellar.org"),
+  GOAL_ESCROW_CONTRACT_ID: z
+    .string()
+    .default("CCEMDKD4POJ4H2EF3JSY73W33OVB34X7KWV7UM6VRESTPNTHJ4OG37TT"),
+  ORACLE_SECRET_KEY: z.string().optional(),
+  ORACLE_PUBLIC_KEY: z.string().optional(),
+
   DAILY_STEP_CAP: z.coerce.number().int().positive().default(25000),
 });
 

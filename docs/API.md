@@ -183,6 +183,28 @@ night to sync from a phone that was asleep. Settling an already-settled pot
 writes nothing and returns the stored result — the job will be retried, and
 double-paying is unforgivable.
 
+### Two-Phase On-Chain Settlement (`stakeKobo > 0`)
+
+When a pot has a non-zero stake (`stakeKobo > 0`), `settlePot` uses the
+`TwoPhaseSettlementCoordinator` (`src/lib/settlement-coordinator.ts`) to bridge
+PostgreSQL persistence and the Soroban `goal-escrow` smart contract without
+risking orphaned payouts or double-attestation on process crash:
+
+1. **Phase 1 (`intent_recorded`)** — Computes the deterministic payout table
+   (`computeSettlementPayouts`) and persists the settlement intent before making
+   any external RPC call.
+2. **Phase 2 (`chain_attested`)** — Invokes the `EscrowContractAdapter`
+   (`MockEscrowAdapter` in local dev, `SorobanEscrowAdapter` on testnet/mainnet)
+   to submit `attest(id, steps)` and records the on-chain transaction hash. If
+   the process crashes after the chain transaction lands but before Phase 2
+   finishes recording, the next run inspects `getGoal(goalId)` on-chain to
+   reconcile state idempotently without re-attesting.
+3. **Phase 3 (`finalized`)** — Writes the final `pot_results` and marks the pot
+   `settled_at` in PostgreSQL.
+
+Any interrupted settlement left in `intent_recorded` or `chain_attested` can be
+resumed via `pnpm settle:recover` (`src/jobs/recover-settlements.ts`).
+
 ## Errors
 
 ```json
