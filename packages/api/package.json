@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run test/phone.test.ts test/sms.test.ts test/otp.test.ts test/pots-pagination.test.ts test/payments.test.ts test/settlement-pure.test.ts test/escrow.test.ts test/settlement-coordinator.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
